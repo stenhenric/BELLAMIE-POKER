@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import bgImage from '../assets/bg.jpeg';
 
 export default function Login() {
   const { login } = useAuth();
@@ -25,9 +26,13 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-green-900 flex items-center justify-center">
-      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center text-green-800 mb-2">KADI</h1>
+    <div
+      className="min-h-screen flex items-center justify-center"
+      style={{ backgroundImage: `url(${bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+    >
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+        <h1 className="text-3xl font-bold text-center text-green-800 mb-2">FIDEL BELLAMIE</h1>
         <p className="text-center text-gray-500 mb-6">Sign in to play</p>
 
         {error && <p className="bg-red-100 text-red-600 p-3 rounded mb-4 text-sm">{error}</p>}
@@ -86,3 +91,4 @@ export default function Login() {
     </div>
   );
 }
+
