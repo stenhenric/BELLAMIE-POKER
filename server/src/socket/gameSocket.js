@@ -1,13 +1,26 @@
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const {
-  createGameState, canPlay, applyPlay,
-  advanceTurn, forcePick, checkWin, declareNikoKadi, fine,
+  createGameState, normalizeCardsForPlay, canPlay, applyPlay,
+  advanceTurn, forcePick, checkWin, declareNikoKadi, syncNikoKadiStatus,
 } = require('../utils/gameEngine');
-const pool = require('../config/db');
+const User = require('../models/User');
+const Game = require('../models/Game');
 
 // In-memory game rooms: { [roomId]: { players, state, maxPlayers } }
 const rooms = {};
+
+function emitAppError(socket, message) {
+  socket.emit('app_error', { message });
+}
+
+function emitRoomUpdate(io, room) {
+  io.to(room.roomId).emit('room_update', {
+    roomId: room.roomId,
+    players: room.players.map(player => ({ id: player.id, username: player.username })),
+    maxPlayers: room.maxPlayers,
+  });
+}
 
 function gameSocket(io) {
   // Authenticate socket connections
@@ -28,7 +41,11 @@ function gameSocket(io) {
 
     // ── Create room ──────────────────────────────────────────────
     socket.on('create_room', ({ maxPlayers = 4 }) => {
-      const roomId = uuidv4().slice(0, 6).toUpperCase();
+      let roomId;
+      do {
+        roomId = randomUUID().replace(/-/g, '').slice(0, 6).toUpperCase();
+      } while (rooms[roomId]);
+
       rooms[roomId] = {
         roomId,
         maxPlayers: Math.min(Math.max(maxPlayers, 2), 8),
@@ -42,49 +59,51 @@ function gameSocket(io) {
     // ── Join room ────────────────────────────────────────────────
     socket.on('join_room', ({ roomId }) => {
       const room = rooms[roomId];
-      if (!room) return socket.emit('error', { message: 'Room not found' });
-      if (room.started) return socket.emit('error', { message: 'Game already started' });
+      if (!room) return emitAppError(socket, 'Room not found');
+      if (room.started) return emitAppError(socket, 'Game already started');
+
+      const existingPlayer = room.players.find(player => player.id === socket.user.id);
+      if (existingPlayer) {
+        existingPlayer.socketId = socket.id;
+        socket.join(roomId);
+        socket.roomId = roomId;
+        emitRoomUpdate(io, room);
+        return;
+      }
+
       if (room.players.length >= room.maxPlayers)
-        return socket.emit('error', { message: 'Room is full' });
-      if (room.players.find(p => p.id === socket.user.id))
-        return socket.emit('error', { message: 'Already in room' });
+        return emitAppError(socket, 'Room is full');
 
       room.players.push({ id: socket.user.id, username: socket.user.username, socketId: socket.id });
       socket.join(roomId);
       socket.roomId = roomId;
-
-      io.to(roomId).emit('room_update', {
-        roomId,
-        players: room.players.map(p => ({ id: p.id, username: p.username })),
-        maxPlayers: room.maxPlayers,
-      });
+      emitRoomUpdate(io, room);
     });
 
     // ── Start game ───────────────────────────────────────────────
     socket.on('start_game', async () => {
       const room = rooms[socket.roomId];
-      if (!room) return socket.emit('error', { message: 'Not in a room' });
+      if (!room) return emitAppError(socket, 'Not in a room');
       if (room.players[0].id !== socket.user.id)
-        return socket.emit('error', { message: 'Only the host can start' });
+        return emitAppError(socket, 'Only the host can start');
       if (room.players.length < 2)
-        return socket.emit('error', { message: 'Need at least 2 players' });
+        return emitAppError(socket, 'Need at least 2 players');
 
       room.state = createGameState(room.players);
       room.started = true;
 
       // Record game start in DB
       try {
-        const result = await pool.query(
-          `INSERT INTO games (status, max_players, created_by) VALUES ('playing', $1, $2) RETURNING id`,
-          [room.maxPlayers, room.players[0].id]
-        );
-        room.gameId = result.rows[0].id;
-        for (let i = 0; i < room.players.length; i++) {
-          await pool.query(
-            `INSERT INTO game_players (game_id, user_id, position) VALUES ($1, $2, $3)`,
-            [room.gameId, room.players[i].id, i]
-          );
-        }
+        const game = await Game.create({
+          status: 'playing',
+          maxPlayers: room.maxPlayers,
+          createdBy: room.players[0].id,
+          players: room.players.map((player, index) => ({
+            userId: player.id,
+            position: index,
+          })),
+        });
+        room.gameId = game._id.toString();
       } catch (err) {
         console.error('Failed to record game start:', err.message);
       }
@@ -96,29 +115,23 @@ function gameSocket(io) {
     // ── Play cards ───────────────────────────────────────────────
     socket.on('play_cards', ({ cards, chosenSuit, calledCard }) => {
       const room = rooms[socket.roomId];
-      if (!room || !room.state) return socket.emit('error', { message: 'No active game' });
+      if (!room || !room.state) return emitAppError(socket, 'No active game');
 
       const state = room.state;
       const currentPlayer = state.players[state.currentPlayerIndex];
       if (currentPlayer.id !== socket.user.id)
-        return socket.emit('error', { message: 'Not your turn' });
+        return emitAppError(socket, 'Not your turn');
 
       // Close NIKO KADI window for any player who missed it (next player is now acting)
       if (state.nikoKadiWindow && state.nikoKadiWindow !== socket.user.id) {
         const missedId = state.nikoKadiWindow;
         if (!state.nikokadi[missedId]) {
-          // Fine the player who missed declaring — manually add card without advancing turn
-          const fineState = JSON.parse(JSON.stringify(state));
-          if (fineState.deck.length === 0 && fineState.discardPile.length > 1) {
-            const top = fineState.discardPile[fineState.discardPile.length - 1];
-            fineState.deck = fineState.discardPile.slice(0, -1).sort(() => Math.random() - 0.5);
-            fineState.discardPile = [top];
-          }
-          if (fineState.deck.length > 0) {
-            fineState.hands[missedId].push(fineState.deck.shift());
-          }
-          fineState.nikoKadiWindow = null;
-          room.state = fineState;
+          const { newState } = forcePick(room.state, missedId, 1, {
+            advanceTurnAfterPick: false,
+            resetFeed: false,
+          });
+          newState.nikoKadiWindow = null;
+          room.state = newState;
           io.to(socket.roomId).emit('niko_kadi_missed', {
             playerId: missedId,
             username: room.players.find(p => p.id === missedId)?.username,
@@ -128,21 +141,33 @@ function gameSocket(io) {
         }
       }
 
-      const { valid, reason, code } = canPlay(cards, room.state, socket.user.id);
+      const normalizedCards = normalizeCardsForPlay(cards, room.state, socket.user.id);
+      if (!normalizedCards.valid) {
+        return emitAppError(socket, normalizedCards.reason);
+      }
+
+      const selectedCards = normalizedCards.cards;
+      const { valid, reason, code } = canPlay(selectedCards, room.state, socket.user.id, {
+        chosenSuit,
+        calledCard,
+      });
       if (!valid) {
         if (code === 'WRONG_SUIT') {
           // Fine player 1 card for wrong suit
-          const { newState } = forcePick(room.state, socket.user.id, 1);
+          const { newState } = forcePick(room.state, socket.user.id, 1, {
+            advanceTurnAfterPick: false,
+            resetFeed: false,
+          });
           room.state = newState;
           socket.emit('fined', { message: `Wrong suit! You picked 1 card as fine. Active suit: ${state.activeSuit}` });
           broadcastGameState(io, room);
         } else {
-          socket.emit('error', { message: reason });
+          emitAppError(socket, reason);
         }
         return;
       }
 
-      room.state = applyPlay(cards, room.state, socket.user.id, { chosenSuit, calledCard });
+      room.state = applyPlay(selectedCards, room.state, socket.user.id, { chosenSuit, calledCard });
 
       // Check win
       if (checkWin(room.state, socket.user.id)) {
@@ -163,11 +188,11 @@ function gameSocket(io) {
 
       const state = room.state;
       if (!state.awaitingAnswer)
-        return socket.emit('error', { message: 'No question awaiting an answer' });
+        return emitAppError(socket, 'No question awaiting an answer');
 
       const currentPlayer = state.players[state.currentPlayerIndex];
       if (currentPlayer.id !== socket.user.id)
-        return socket.emit('error', { message: 'Not your turn' });
+        return emitAppError(socket, 'Not your turn');
 
       const newState = JSON.parse(JSON.stringify(state));
       if (newState.deck.length === 0) {
@@ -185,12 +210,23 @@ function gameSocket(io) {
       }
 
       newState.awaitingAnswer = null;
+      syncNikoKadiStatus(newState, socket.user.id);
 
       // Check hand limit after picking
       if ((newState.hands[socket.user.id] || []).length >= 15) {
         const p = newState.players.find(p => p.id === socket.user.id);
         if (p) p.eliminated = true;
         io.to(socket.roomId).emit('player_eliminated', { playerId: socket.user.id, username: socket.user.username });
+      }
+
+      const activePlayers = newState.players.filter(player => !player.eliminated);
+      if (activePlayers.length === 1) {
+        newState.gameOver = true;
+        newState.winnerId = activePlayers[0].id;
+        room.state = newState;
+        io.to(socket.roomId).emit('game_over', { winnerId: activePlayers[0].id, username: activePlayers[0].username });
+        recordGameResult(room, activePlayers[0].id);
+        return;
       }
 
       advanceTurn(newState);
@@ -207,7 +243,7 @@ function gameSocket(io) {
       const state = room.state;
       const currentPlayer = state.players[state.currentPlayerIndex];
       if (currentPlayer.id !== socket.user.id)
-        return socket.emit('error', { message: 'Not your turn' });
+        return emitAppError(socket, 'Not your turn');
 
       const count = state.activeFeed ? state.feedStack : 1;
       const { newState, picks } = forcePick(state, socket.user.id, count);
@@ -243,7 +279,7 @@ function gameSocket(io) {
 
       // Only valid if this player is in the NIKO KADI window
       if (state.nikoKadiWindow !== socket.user.id) {
-        return socket.emit('error', { message: 'You can only say NIKO KADI immediately after playing your second-to-last card!' });
+        return emitAppError(socket, 'You can only say NIKO KADI immediately after playing your second-to-last card!');
       }
 
       room.state = declareNikoKadi(room.state, socket.user.id);
@@ -257,7 +293,7 @@ function gameSocket(io) {
       if (!room || !room.started || room.state?.gameOver) return;
 
       const player = room.players.find(p => p.id === socket.user.id);
-      if (!player) return socket.emit('error', { message: 'You are not in this game' });
+      if (!player) return emitAppError(socket, 'You are not in this game');
 
       player.socketId = socket.id;
       socket.join(roomId);
@@ -295,11 +331,11 @@ function gameSocket(io) {
 
       if (!room.started) {
         room.players = room.players.filter(p => p.id !== socket.user.id);
-        io.to(socket.roomId).emit('room_update', {
-          roomId: socket.roomId,
-          players: room.players.map(p => ({ id: p.id, username: p.username })),
-          maxPlayers: room.maxPlayers,
-        });
+        if (room.players.length === 0) {
+          delete rooms[socket.roomId];
+        } else {
+          emitRoomUpdate(io, room);
+        }
       } else {
         const player = room.players.find(p => p.id === socket.user.id);
         if (player) player.socketId = null;
@@ -346,14 +382,14 @@ async function recordGameResult(room, winnerId) {
   const playerIds = room.players.map(p => p.id);
   const loserIds = playerIds.filter(id => id !== winnerId);
   try {
-    await pool.query('UPDATE users SET wins = wins + 1 WHERE id = $1', [winnerId]);
+    await User.updateOne({ _id: winnerId }, { $inc: { wins: 1 } });
     if (loserIds.length > 0) {
-      await pool.query('UPDATE users SET losses = losses + 1 WHERE id = ANY($1)', [loserIds]);
+      await User.updateMany({ _id: { $in: loserIds } }, { $inc: { losses: 1 } });
     }
     if (room.gameId) {
-      await pool.query(
-        `UPDATE games SET status = 'finished', winner_id = $1, finished_at = NOW() WHERE id = $2`,
-        [winnerId, room.gameId]
+      await Game.updateOne(
+        { _id: room.gameId },
+        { $set: { status: 'finished', winnerId, finishedAt: new Date() } }
       );
     }
   } catch (err) {

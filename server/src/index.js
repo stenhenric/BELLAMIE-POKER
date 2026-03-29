@@ -6,6 +6,7 @@ const cors = require('cors');
 
 const authRoutes = require('./routes/auth');
 const gameSocket = require('./socket/gameSocket');
+const connectDB = require('./config/db');
 
 const app = express();
 const server = http.createServer(app);
@@ -28,4 +29,12 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 gameSocket(io);
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+connectDB()
+  .then(() => {
+    server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  })
+  .catch((err) => {
+    console.error('Failed to connect to MongoDB:', err.message);
+    process.exit(1);
+  });

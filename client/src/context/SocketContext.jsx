@@ -1,31 +1,35 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
+import { SERVER_URL } from '../services/api';
 
 const SocketContext = createContext(null);
 
 export function SocketProvider({ children }) {
   const { user } = useAuth();
-  const socketRef = useRef(null);
-  const [socket, setSocket] = useState(null);
+  const userId = user?.id ?? null;
+  const socket = useMemo(() => {
+    if (!userId) {
+      return null;
+    }
+
+    return io(SERVER_URL, {
+      auth: { token: localStorage.getItem('token') },
+      autoConnect: false,
+    });
+  }, [userId]);
 
   useEffect(() => {
-    if (user && !socketRef.current) {
-      const s = io(import.meta.env.VITE_SERVER_URL, {
-        auth: { token: localStorage.getItem('token') },
-      });
-      socketRef.current = s;
-      setSocket(s);
+    if (!socket) {
+      return;
     }
 
-    if (!user && socketRef.current) {
-      socketRef.current.disconnect();
-      socketRef.current = null;
-      setSocket(null);
-    }
+    socket.connect();
 
-    return () => {};
-  }, [user]);
+    return () => {
+      socket.disconnect();
+    };
+  }, [socket]);
 
   return (
     <SocketContext.Provider value={socket}>

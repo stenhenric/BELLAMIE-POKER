@@ -14,16 +14,19 @@ export default function Room() {
   useEffect(() => {
     if (!socket) return;
 
+    const handleRoomUpdate = (data) => setRoom(data);
+    const handleGameStart = () => navigate(`/game/${roomId}`);
+    const handleAppError = ({ message }) => setError(message);
+
+    socket.on('room_update', handleRoomUpdate);
+    socket.on('game_start', handleGameStart);
+    socket.on('app_error', handleAppError);
     socket.emit('join_room', { roomId });
 
-    socket.on('room_update', (data) => setRoom(data));
-    socket.on('game_start', () => navigate(`/game/${roomId}`));
-    socket.on('error', ({ message }) => setError(message));
-
     return () => {
-      socket.off('room_update');
-      socket.off('game_start');
-      socket.off('error');
+      socket.off('room_update', handleRoomUpdate);
+      socket.off('game_start', handleGameStart);
+      socket.off('app_error', handleAppError);
     };
   }, [socket, roomId, navigate]);
 

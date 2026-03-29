@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import bgImage from '../assets/bg.jpeg';
+import bgImage from '../assets/bg.jpg';
 
 export default function Lobby() {
   const { user, logout } = useAuth();
@@ -13,20 +13,24 @@ export default function Lobby() {
   const [error, setError] = useState('');
 
   const createRoom = () => {
-    if (!socket) return;
-    socket.emit('create_room', { maxPlayers });
+    if (!socket) {
+      setError('Connecting to server...');
+      return;
+    }
+
+    setError('');
     socket.once('room_created', ({ roomId }) => {
       navigate(`/room/${roomId}`);
     });
+    socket.emit('create_room', { maxPlayers });
   };
 
   const joinRoom = () => {
-    if (!socket) return;
     if (!roomCode.trim()) return setError('Enter a room code');
+
+    const nextRoomId = roomCode.trim().toUpperCase();
     setError('');
-    socket.emit('join_room', { roomId: roomCode.toUpperCase() });
-    socket.once('error', ({ message }) => setError(message));
-    socket.once('room_update', () => navigate(`/room/${roomCode.toUpperCase()}`));
+    navigate(`/room/${nextRoomId}`);
   };
 
   return (

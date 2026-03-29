@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import bgImage from '../assets/bg.jpeg';
+import bgImage from '../assets/bg.jpg';
 
 export default function Login() {
   const { login } = useAuth();

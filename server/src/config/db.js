@@ -1,17 +1,27 @@
-const { Pool } = require('pg');
-require('dotenv').config();
+const mongoose = require('mongoose');
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
+let hasErrorListener = false;
 
-pool.connect((err) => {
-  if (err) {
-    console.error('Database connection error:', err.message);
-  } else {
-    console.log('Connected to PostgreSQL');
+async function connectDB() {
+  const mongoUri = process.env.MONGO_URI;
+  if (!mongoUri) {
+    throw new Error('MONGO_URI is not set');
   }
-});
 
-module.exports = pool;
+  if (!hasErrorListener) {
+    mongoose.connection.on('error', (err) => {
+      console.error('MongoDB connection error:', err.message);
+    });
+    hasErrorListener = true;
+  }
+
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
+  }
+
+  await mongoose.connect(mongoUri);
+  console.log('Connected to MongoDB');
+  return mongoose.connection;
+}
+
+module.exports = connectDB;

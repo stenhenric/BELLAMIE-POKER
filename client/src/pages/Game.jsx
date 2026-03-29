@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 
 const SUIT_SYMBOLS = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠', special: '♠' };
 const SUIT_COLOURS = { hearts: 'text-red-500', diamonds: 'text-red-500', clubs: 'text-gray-800', spades: 'text-gray-800', special: 'text-purple-700' };
+const CALLABLE_RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 
 const CARD_ORDER = ['special', 'A', 'JOKER', '2', '3', '4', '5', '6', '7', '8', 'Q', '9', '10', 'J', 'K'];
 
@@ -32,6 +33,7 @@ function CardDisplay({ card, selected, onClick }) {
   const isSpecial = card.isSpecialAce;
   return (
     <button
+      type="button"
       onClick={onClick}
       className={`
         w-14 h-20 rounded-lg border-2 flex flex-col items-center justify-center text-sm font-bold shadow
@@ -60,73 +62,69 @@ export default function Game() {
   const [selected, setSelected] = useState([]);
   const [message, setMessage] = useState('');
   const [showSuitPicker, setShowSuitPicker] = useState(false);
+  const [showCallPicker, setShowCallPicker] = useState(false);
+  const [calledCard, setCalledCard] = useState({ rank: 'A', suit: 'hearts' });
   const [gameOver, setGameOver] = useState(null);
-  const [nikoKadiDeclared, setNikoKadiDeclared] = useState(false);
+  const messageTimeoutRef = useRef(null);
+
+  const flashMessage = useEffectEvent((nextMessage, duration = 3000) => {
+    setMessage(nextMessage);
+    window.clearTimeout(messageTimeoutRef.current);
+    messageTimeoutRef.current = window.setTimeout(() => setMessage(''), duration);
+  });
+
+  useEffect(() => {
+    return () => window.clearTimeout(messageTimeoutRef.current);
+  }, []);
 
   useEffect(() => {
     if (!socket) return;
 
     // Sync state on mount (page reload) and on every reconnect
-    socket.emit('rejoin_game', { roomId });
-    socket.on('connect', () => socket.emit('rejoin_game', { roomId }));
-
-    socket.on('game_state', (state) => {
+    const handleConnect = () => socket.emit('rejoin_game', { roomId });
+    const handleGameState = (state) => {
       setGameState(state);
       setSelected([]);
-    });
+      setShowSuitPicker(false);
+      setShowCallPicker(false);
+    };
+    const handleAppError = ({ message: errorMessage }) => flashMessage(errorMessage);
+    const handleGameOver = ({ username }) => setGameOver(username);
+    const handleNikoKadiDeclared = ({ username }) => flashMessage(`🔔 ${username} says NIKO KADI!`, 4000);
+    const handleNikoKadiMissed = ({ username }) => flashMessage(`⚠ ${username} forgot NIKO KADI - fined 1 card!`, 4000);
+    const handleFined = ({ message: fineMessage }) => flashMessage(`❌ ${fineMessage}`);
+    const handlePlayerEliminated = ({ username }) => flashMessage(`💀 ${username} eliminated (15 cards)!`);
+    const handlePlayerDisconnected = ({ username }) => flashMessage(`⚠ ${username} disconnected - waiting for them to reconnect...`, 5000);
+    const handlePlayerReconnected = ({ username }) => flashMessage(`✓ ${username} reconnected`);
 
-    socket.on('error', ({ message }) => {
-      setMessage(message);
-      setTimeout(() => setMessage(''), 3000);
-    });
-
-    socket.on('game_over', ({ username }) => setGameOver(username));
-
-    socket.on('niko_kadi_declared', ({ username }) => {
-      setMessage(`🔔 ${username} says NIKO KADI!`);
-      setTimeout(() => setMessage(''), 4000);
-    });
-
-    socket.on('niko_kadi_missed', ({ username }) => {
-      setMessage(`⚠ ${username} forgot NIKO KADI — fined 1 card!`);
-      setTimeout(() => setMessage(''), 4000);
-    });
-
-    socket.on('fined', ({ message }) => {
-      setMessage(`❌ ${message}`);
-      setTimeout(() => setMessage(''), 3000);
-    });
-
-    socket.on('player_eliminated', ({ username }) => {
-      setMessage(`💀 ${username} eliminated (15 cards)!`);
-      setTimeout(() => setMessage(''), 3000);
-    });
-
-    socket.on('player_disconnected', ({ username }) => {
-      setMessage(`⚠ ${username} disconnected — waiting for them to reconnect...`);
-      setTimeout(() => setMessage(''), 5000);
-    });
-
-    socket.on('player_reconnected', ({ username }) => {
-      setMessage(`✓ ${username} reconnected`);
-      setTimeout(() => setMessage(''), 3000);
-    });
+    socket.emit('rejoin_game', { roomId });
+    socket.on('connect', handleConnect);
+    socket.on('game_state', handleGameState);
+    socket.on('app_error', handleAppError);
+    socket.on('game_over', handleGameOver);
+    socket.on('niko_kadi_declared', handleNikoKadiDeclared);
+    socket.on('niko_kadi_missed', handleNikoKadiMissed);
+    socket.on('fined', handleFined);
+    socket.on('player_eliminated', handlePlayerEliminated);
+    socket.on('player_disconnected', handlePlayerDisconnected);
+    socket.on('player_reconnected', handlePlayerReconnected);
 
     return () => {
-      socket.off('connect');
-      socket.off('game_state');
-      socket.off('error');
-      socket.off('game_over');
-      socket.off('niko_kadi_declared');
-      socket.off('niko_kadi_missed');
-      socket.off('fined');
-      socket.off('player_eliminated');
-      socket.off('player_disconnected');
-      socket.off('player_reconnected');
+      socket.off('connect', handleConnect);
+      socket.off('game_state', handleGameState);
+      socket.off('app_error', handleAppError);
+      socket.off('game_over', handleGameOver);
+      socket.off('niko_kadi_declared', handleNikoKadiDeclared);
+      socket.off('niko_kadi_missed', handleNikoKadiMissed);
+      socket.off('fined', handleFined);
+      socket.off('player_eliminated', handlePlayerEliminated);
+      socket.off('player_disconnected', handlePlayerDisconnected);
+      socket.off('player_reconnected', handlePlayerReconnected);
     };
   }, [socket, roomId]);
 
   const isMyTurn = gameState?.currentPlayerId === user?.id;
+  const hasSpecialAceSelected = selected.length === 1 && selected[0]?.isSpecialAce;
 
   const toggleCard = (card) => {
     if (!isMyTurn) return;
@@ -138,7 +136,13 @@ export default function Game() {
   };
 
   const playCards = () => {
-    if (selected.length === 0) return;
+    if (!socket || selected.length === 0) return;
+
+    if (hasSpecialAceSelected) {
+      setShowCallPicker(true);
+      return;
+    }
+
     const needsSuitPick = selected.every(c => c.rank === 'A' && !c.isSpecialAce);
     if (needsSuitPick) { setShowSuitPicker(true); return; }
     socket.emit('play_cards', { cards: selected });
@@ -149,12 +153,16 @@ export default function Game() {
 
   const declareNikoKadi = () => {
     socket.emit('niko_kadi');
-    setNikoKadiDeclared(true);
   };
 
   const confirmSuit = (suit) => {
     socket.emit('play_cards', { cards: selected, chosenSuit: suit });
     setShowSuitPicker(false);
+  };
+
+  const confirmCalledCard = () => {
+    socket.emit('play_cards', { cards: selected, calledCard });
+    setShowCallPicker(false);
   };
 
   if (gameOver) {
@@ -211,6 +219,12 @@ export default function Game() {
       {isMyTurn && !gameState.awaitingAnswer && selected.some(c => c.rank === '8' || c.rank === 'Q') && (
         <div className="bg-blue-500 text-white text-center py-2 rounded-lg text-sm font-medium">
           ❓ Select an answer card of matching suit, or Play questions only then pick answer
+        </div>
+      )}
+
+      {isMyTurn && hasSpecialAceSelected && (
+        <div className="bg-purple-600 text-white text-center py-2 rounded-lg text-sm font-medium">
+          ♠ Special Ace selected - choose the exact card you want to call
         </div>
       )}
 
@@ -325,7 +339,7 @@ export default function Game() {
                 >
                   Pick {gameState.activeFeed ? gameState.feedStack : 1}
                 </button>
-                {gameState.nikoKadiWindow === user?.id && !nikoKadiDeclared && (
+                {gameState.nikoKadiWindow === user?.id && !gameState.nikokadi[user?.id] && (
                   <button
                     onClick={declareNikoKadi}
                     className="bg-purple-600 text-white px-6 py-2 rounded-lg font-bold animate-pulse hover:bg-purple-700"
@@ -357,6 +371,56 @@ export default function Game() {
                   {suit}
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCallPicker && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-sm">
+            <h2 className="text-lg font-bold text-center mb-4">Call a specific card</h2>
+            <div className="space-y-4">
+              <label className="block text-sm font-medium text-gray-700">
+                Rank
+                <select
+                  value={calledCard.rank}
+                  onChange={(e) => setCalledCard(prev => ({ ...prev, rank: e.target.value }))}
+                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                >
+                  {CALLABLE_RANKS.map(rank => (
+                    <option key={rank} value={rank}>{rank}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Suit
+                <select
+                  value={calledCard.suit}
+                  onChange={(e) => setCalledCard(prev => ({ ...prev, suit: e.target.value }))}
+                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"
+                >
+                  {['hearts', 'diamonds', 'clubs', 'spades'].map(suit => (
+                    <option key={suit} value={suit}>{suit}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowCallPicker(false)}
+                className="flex-1 border border-gray-300 rounded-lg px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmCalledCard}
+                className="flex-1 bg-purple-600 text-white rounded-lg px-4 py-2 font-semibold hover:bg-purple-700"
+              >
+                Call Card
+              </button>
             </div>
           </div>
         </div>

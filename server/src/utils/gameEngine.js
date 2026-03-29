@@ -58,6 +58,57 @@ function isAce(card) { return getCardType(card) === CARD_TYPES.ACE || getCardTyp
 function isQuestion(card) { return getCardType(card) === CARD_TYPES.QUESTION; }
 function isJoker(card) { return card.rank === 'JOKER'; }
 
+function isValidCalledCard(card) {
+  return Boolean(card && RANKS.includes(card.rank) && SUITS.includes(card.suit));
+}
+
+function matchesCalledCard(card, calledCard) {
+  return Boolean(
+    card &&
+    calledCard &&
+    !card.isSpecialAce &&
+    card.rank === calledCard.rank &&
+    card.suit === calledCard.suit
+  );
+}
+
+function normalizeCardsForPlay(cards, state, playerId) {
+  if (!Array.isArray(cards) || cards.length === 0) {
+    return { valid: false, reason: 'No cards selected' };
+  }
+
+  const hand = state.hands[playerId] || [];
+  const handById = new Map(hand.map(card => [card.id, card]));
+  const normalized = [];
+  const seenIds = new Set();
+
+  for (const card of cards) {
+    if (!card?.id || seenIds.has(card.id)) {
+      return { valid: false, reason: 'Invalid card selection' };
+    }
+
+    const actualCard = handById.get(card.id);
+    if (!actualCard) {
+      return { valid: false, reason: 'You can only play cards from your hand' };
+    }
+
+    normalized.push(actualCard);
+    seenIds.add(card.id);
+  }
+
+  return { valid: true, cards: normalized };
+}
+
+function syncNikoKadiStatus(state, playerId) {
+  const handCount = state.hands[playerId]?.length ?? 0;
+
+  if (handCount > 1) {
+    delete state.nikokadi[playerId];
+  }
+
+  state.nikoKadiWindow = handCount === 1 ? playerId : null;
+}
+
 function feederValue(card) {
   if (card.rank === '2') return 2;
   if (card.rank === '3') return 3;
@@ -110,15 +161,30 @@ function createGameState(players) {
 }
 
 // ─── Validate a play ──────────────────────────────────────────────────────────
-function canPlay(cards, state, playerId) {
+function canPlay(cards, state, playerId, options = {}) {
   if (!cards || cards.length === 0) return { valid: false, reason: 'No cards selected' };
 
   const topCard = state.discardPile[state.discardPile.length - 1];
   const firstCard = cards[0];
-  const type = getCardType(firstCard);
+  const isTwoRegularAces = cards.length === 2 && cards.every(card => getCardType(card) === CARD_TYPES.ACE);
+
+  if (state.specialAceCall?.card) {
+    if (!isTwoRegularAces) {
+      if (cards.length !== 1 || !matchesCalledCard(firstCard, state.specialAceCall.card)) {
+        return {
+          valid: false,
+          reason: `Special Ace called for ${state.specialAceCall.card.rank} of ${state.specialAceCall.card.suit}`,
+        };
+      }
+    }
+  }
 
   // ── Aces can always be played ──
   if (isAce(firstCard)) {
+    if (firstCard.isSpecialAce && !isValidCalledCard(options.calledCard)) {
+      return { valid: false, reason: 'Special Ace must call a specific card' };
+    }
+
     // Cannot stack regular + special ace
     if (cards.length === 2) {
       const types = cards.map(getCardType);
@@ -183,7 +249,6 @@ function canPlay(cards, state, playerId) {
 
   // ── Joker: follows colour ──
   if (isJoker(firstCard)) {
-    const requiredColour = isJoker(topCard) ? topCard.colour : topCard.colour;
     if (firstCard.colour !== state.activeColour) {
       return { valid: false, reason: `Joker must match colour: ${state.activeColour}` };
     }
@@ -250,12 +315,14 @@ function applyPlay(cards, state, playerId, options = {}) {
   // Add to discard pile
   newState.discardPile.push(...cards);
 
-  // Set NIKO KADI window if player now has 1 card left
-  if (newState.hands[playerId].length === 1) {
-    newState.nikoKadiWindow = playerId;
-  } else {
-    newState.nikoKadiWindow = null;
+  if (newState.specialAceCall?.card) {
+    const isCancellingAcePair = cards.length === 2 && cards.every(c => getCardType(c) === CARD_TYPES.ACE);
+    if (isCancellingAcePair || matchesCalledCard(firstCard, newState.specialAceCall.card)) {
+      newState.specialAceCall = null;
+    }
   }
+
+  syncNikoKadiStatus(newState, playerId);
 
   // ── Ace logic ──
   if (type === CARD_TYPES.ACE || type === CARD_TYPES.SPECIAL_ACE) {
@@ -266,7 +333,8 @@ function applyPlay(cards, state, playerId, options = {}) {
     if (type === CARD_TYPES.SPECIAL_ACE) {
       // Call a specific card
       newState.specialAceCall = { callerId: playerId, card: options.calledCard };
-      newState.activeSuit = options.calledCard ? options.calledCard.suit : state.activeSuit;
+      newState.activeSuit = options.calledCard.suit;
+      newState.activeColour = COLOURS[options.calledCard.suit];
     } else if (cards.length === 2) {
       // Two regular aces: choose suit
       newState.activeSuit = options.chosenSuit || state.activeSuit;
@@ -276,14 +344,10 @@ function applyPlay(cards, state, playerId, options = {}) {
       // Single regular ace: choose suit
       newState.activeSuit = options.chosenSuit || state.activeSuit;
       newState.activeColour = COLOURS[options.chosenSuit] || state.activeColour;
+      newState.specialAceCall = null;
     }
     advanceTurn(newState);
     return newState;
-  }
-
-  // ── Cancel special ace call with 2 aces ──
-  if (cards.length === 2 && cards.every(c => getCardType(c) === CARD_TYPES.ACE)) {
-    newState.specialAceCall = null;
   }
 
   // ── Feeder logic ──
@@ -364,7 +428,8 @@ function advanceTurn(state, steps = 1) {
 }
 
 // ─── Force pick cards ─────────────────────────────────────────────────────────
-function forcePick(state, playerId, count) {
+function forcePick(state, playerId, count, options = {}) {
+  const { advanceTurnAfterPick = true, resetFeed = true } = options;
   const newState = JSON.parse(JSON.stringify(state));
   const picks = [];
 
@@ -382,9 +447,17 @@ function forcePick(state, playerId, count) {
     eliminatePlayer(newState, playerId);
   }
 
-  newState.activeFeed = false;
-  newState.feedStack = 0;
-  advanceTurn(newState);
+  syncNikoKadiStatus(newState, playerId);
+
+  if (resetFeed) {
+    newState.activeFeed = false;
+    newState.feedStack = 0;
+  }
+
+  if (advanceTurnAfterPick) {
+    advanceTurn(newState);
+  }
+
   return { newState, picks };
 }
 
@@ -424,6 +497,7 @@ function fine(state, playerId) {
 module.exports = {
   buildDeck,
   createGameState,
+  normalizeCardsForPlay,
   canPlay,
   applyPlay,
   advanceTurn,
@@ -431,6 +505,7 @@ module.exports = {
   checkWin,
   declareNikoKadi,
   fine,
+  syncNikoKadiStatus,
   getCardType,
   isFeeder,
   isAce,
