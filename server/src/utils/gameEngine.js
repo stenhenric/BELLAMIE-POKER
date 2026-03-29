@@ -171,11 +171,9 @@ function createGameState(players) {
   };
 }
 
-// ─── Validate a play ──────────────────────────────────────────────────────────
-function canPlay(cards, state, playerId, options = {}) {
-  if (!cards || cards.length === 0) return returnInvalid('No cards selected');
+// ─── Refactored Validation Helpers ────────────────────────────────────────────
 
-  const topCard = state.discardPile[state.discardPile.length - 1];
+function validateSpecialAceCall(cards, state, options) {
   const firstCard = cards[0];
   const isTwoRegularAces = cards.length === 2 && cards.every(card => getCardType(card) === CARD_TYPES.ACE);
 
@@ -186,24 +184,102 @@ function canPlay(cards, state, playerId, options = {}) {
       }
     }
   }
+  return returnValid();
+}
+
+function validateAces(cards, options) {
+  const firstCard = cards[0];
+  if (firstCard.isSpecialAce && !isValidCalledCard(options.calledCard)) {
+    return returnInvalid('Special Ace must call a specific card');
+  }
+
+  if (cards.length === 2) {
+    const types = cards.map(getCardType);
+    if (types.includes(CARD_TYPES.ACE) && types.includes(CARD_TYPES.SPECIAL_ACE)) {
+      return returnInvalid('Cannot stack Regular Ace with Special Ace');
+    }
+    if (types.every(t => t === CARD_TYPES.ACE)) return returnValid();
+  }
+  if (cards.length > 2) return returnInvalid('Cannot stack more than 2 Aces');
+  return returnValid();
+}
+
+function validateQuestions(cards, state, topCard) {
+  const firstCard = cards[0];
+
+  if (firstCard.suit !== state.activeSuit && firstCard.rank !== topCard.rank) {
+    return returnInvalid(`Question must match suit: ${state.activeSuit}`);
+  }
+
+  const questionCards = cards.filter(c => isQuestion(c));
+  const answerCards = cards.filter(c => !isQuestion(c));
+
+  if (answerCards.length > 1) {
+    return returnInvalid('Only one answer card allowed');
+  }
+
+  for (let i = 1; i < questionCards.length; i++) {
+    const prev = questionCards[i - 1];
+    const curr = questionCards[i];
+    if (curr.rank !== prev.rank && curr.suit !== prev.suit) {
+      return returnInvalid('Question chain: each card must share rank or suit with the previous');
+    }
+  }
+
+  if (answerCards.length === 1) {
+    const answer = answerCards[0];
+    const lastQuestion = questionCards[questionCards.length - 1];
+    const invalid = isFeeder(answer) || isAce(answer) || answer.rank === 'J' || answer.rank === 'K' || answer.rank === 'Q';
+    if (invalid) return returnInvalid('Invalid answer card');
+    if (answer.suit !== lastQuestion.suit) {
+      return returnInvalid(`Answer must match suit of last question: ${lastQuestion.suit}`);
+    }
+  }
+
+  return returnValid();
+}
+
+function validateStacking(cards, state, topCard) {
+  const firstCard = cards[0];
+  const stackable = ['4','5','6','7','9','10','J','Q','K','8'];
+
+  if (stackable.includes(firstCard.rank) && firstCard.rank === topCard.rank) {
+    if (!cards.every(c => c.rank === firstCard.rank)) {
+      return returnInvalid('Stacked cards must have the same rank');
+    }
+    return returnValid();
+  }
+
+  if (cards.length > 1) {
+    const rank = firstCard.rank;
+    if (!cards.every(c => c.rank === rank)) {
+      return returnInvalid('Stacked cards must have the same rank');
+    }
+    if (!stackable.includes(rank)) {
+      return returnInvalid(`${rank} cannot be stacked`);
+    }
+    if (firstCard.suit !== state.activeSuit) {
+      return returnInvalid(`First card must match suit: ${state.activeSuit}`);
+    }
+    return returnValid();
+  }
+
+  return null; // Signals to continue validation if not stacking
+}
+
+// ─── Validate a play ──────────────────────────────────────────────────────────
+function canPlay(cards, state, playerId, options = {}) {
+  if (!cards || cards.length === 0) return returnInvalid('No cards selected');
+
+  const topCard = state.discardPile[state.discardPile.length - 1];
+  const firstCard = cards[0];
+
+  const specialAceCheck = validateSpecialAceCall(cards, state, options);
+  if (!specialAceCheck.valid) return specialAceCheck;
 
   // ── Aces can always be played ──
   if (isAce(firstCard)) {
-    if (firstCard.isSpecialAce && !isValidCalledCard(options.calledCard)) {
-      return returnInvalid('Special Ace must call a specific card');
-    }
-
-    // Cannot stack regular + special ace
-    if (cards.length === 2) {
-      const types = cards.map(getCardType);
-      if (types.includes(CARD_TYPES.ACE) && types.includes(CARD_TYPES.SPECIAL_ACE)) {
-        return returnInvalid('Cannot stack Regular Ace with Special Ace');
-      }
-      // Only exactly 2 regular aces allowed stacked
-      if (types.every(t => t === CARD_TYPES.ACE)) return returnValid();
-    }
-    if (cards.length > 2) return returnInvalid('Cannot stack more than 2 Aces');
-    return returnValid();
+    return validateAces(cards, options);
   }
 
   // ── Active feed: only feeders or aces allowed ──
@@ -220,39 +296,7 @@ function canPlay(cards, state, playerId, options = {}) {
 
   // ── Question cards: questions + answer played together ──
   if (isQuestion(firstCard)) {
-    // First question must match active suit or same rank as top card
-    if (firstCard.suit !== state.activeSuit && firstCard.rank !== topCard.rank) {
-      return returnInvalid(`Question must match suit: ${state.activeSuit}`);
-    }
-
-    const questionCards = cards.filter(c => isQuestion(c));
-    const answerCards = cards.filter(c => !isQuestion(c));
-
-    if (answerCards.length > 1) {
-      return returnInvalid('Only one answer card allowed');
-    }
-
-    // Validate question chain: each next question must share rank OR suit with previous
-    for (let i = 1; i < questionCards.length; i++) {
-      const prev = questionCards[i - 1];
-      const curr = questionCards[i];
-      if (curr.rank !== prev.rank && curr.suit !== prev.suit) {
-        return returnInvalid('Question chain: each card must share rank or suit with the previous');
-      }
-    }
-
-    // Validate answer if included
-    if (answerCards.length === 1) {
-      const answer = answerCards[0];
-      const lastQuestion = questionCards[questionCards.length - 1];
-      const invalid = isFeeder(answer) || isAce(answer) || answer.rank === 'J' || answer.rank === 'K' || answer.rank === 'Q';
-      if (invalid) return returnInvalid('Invalid answer card');
-      if (answer.suit !== lastQuestion.suit) {
-        return returnInvalid(`Answer must match suit of last question: ${lastQuestion.suit}`);
-      }
-    }
-
-    return returnValid();
+    return validateQuestions(cards, state, topCard);
   }
 
   // ── Joker: follows colour ──
@@ -271,29 +315,9 @@ function canPlay(cards, state, playerId, options = {}) {
     return returnValid();
   }
 
-  // ── Same rank as top card: always playable (single or stacked) ──
-  const stackable = ['4','5','6','7','9','10','J','Q','K','8'];
-  if (stackable.includes(firstCard.rank) && firstCard.rank === topCard.rank) {
-    if (!cards.every(c => c.rank === firstCard.rank)) {
-      return returnInvalid('Stacked cards must have the same rank');
-    }
-    return returnValid();
-  }
-
-  // ── Stacking same-rank cards (must match suit for first card) ──
-  if (cards.length > 1) {
-    const rank = firstCard.rank;
-    if (!cards.every(c => c.rank === rank)) {
-      return returnInvalid('Stacked cards must have the same rank');
-    }
-    if (!stackable.includes(rank)) {
-      return returnInvalid(`${rank} cannot be stacked`);
-    }
-    if (firstCard.suit !== state.activeSuit) {
-      return returnInvalid(`First card must match suit: ${state.activeSuit}`);
-    }
-    return returnValid();
-  }
+  // ── Stacking cards ──
+  const stackingCheck = validateStacking(cards, state, topCard);
+  if (stackingCheck) return stackingCheck;
 
   // ── Normal / special single card: must match suit ──
   if (firstCard.suit !== state.activeSuit) {
@@ -308,6 +332,7 @@ function canPlay(cards, state, playerId, options = {}) {
   return returnValid();
 }
 
+
 // ─── Apply a play ─────────────────────────────────────────────────────────────
 function applyPlay(cards, state, playerId, options = {}) {
   // options: { chosenSuit, calledCard } for aces / special ace
@@ -317,8 +342,8 @@ function applyPlay(cards, state, playerId, options = {}) {
   const type = getCardType(firstCard);
 
   // Remove cards from player's hand
-  const cardIds = cards.map(c => c.id);
-  newState.hands[playerId] = newState.hands[playerId].filter(c => !cardIds.includes(c.id));
+  const cardIds = new Set(cards.map(c => c.id));
+  newState.hands[playerId] = newState.hands[playerId].filter(c => !cardIds.has(c.id));
 
   // Add to discard pile
   newState.discardPile.push(...cards);
@@ -332,87 +357,108 @@ function applyPlay(cards, state, playerId, options = {}) {
 
   syncNikoKadiStatus(newState, playerId);
 
-  // ── Ace logic ──
+  // ── Route to specific logic handlers ──
   if (type === CARD_TYPES.ACE || type === CARD_TYPES.SPECIAL_ACE) {
-    // Refuse feeders
-    newState.activeFeed = false;
-    newState.feedStack = 0;
-
-    if (type === CARD_TYPES.SPECIAL_ACE) {
-      // Call a specific card
-      newState.specialAceCall = { callerId: playerId, card: options.calledCard };
-      newState.activeSuit = options.calledCard.suit;
-      newState.activeColour = COLOURS[options.calledCard.suit];
-    } else if (cards.length === 2) {
-      // Two regular aces: choose suit
-      newState.activeSuit = options.chosenSuit || state.activeSuit;
-      newState.activeColour = COLOURS[options.chosenSuit] || state.activeColour;
-      newState.specialAceCall = null;
-    } else {
-      // Single regular ace: choose suit
-      newState.activeSuit = options.chosenSuit || state.activeSuit;
-      newState.activeColour = COLOURS[options.chosenSuit] || state.activeColour;
-      newState.specialAceCall = null;
-    }
-    advanceTurn(newState);
-    return newState;
+    return applyAceLogic(newState, cards, playerId, options, type, state);
   }
 
-  // ── Feeder logic ──
   if (isFeeder(firstCard)) {
-    if (!newState.activeFeed) newState.activeFeed = true;
-    for (const c of cards) {
-      newState.feedStack += feederValue(c);
-    }
-    newState.activeSuit = lastCard.rank === 'JOKER' ? state.activeSuit : lastCard.suit;
-    newState.activeColour = lastCard.colour;
-    advanceTurn(newState);
-    return newState;
+    return applyFeederLogic(newState, cards, lastCard, state);
   }
 
-  // ── Question logic ──
   if (isQuestion(firstCard)) {
-    const questionCards = cards.filter(c => isQuestion(c));
-    const answerCards = cards.filter(c => !isQuestion(c));
-    const lastQuestion = questionCards[questionCards.length - 1];
-
-    newState.activeSuit = lastQuestion.suit;
-    newState.activeColour = COLOURS[lastQuestion.suit];
-
-    if (answerCards.length === 1) {
-      // Answer included — complete play, advance turn
-      newState.activeSuit = answerCards[0].suit;
-      newState.activeColour = COLOURS[answerCards[0].suit];
-      newState.awaitingAnswer = null;
-      advanceTurn(newState);
-    } else {
-      // No answer — turn stays, player must pick answer from deck
-      newState.awaitingAnswer = { questionSuit: lastQuestion.suit };
-    }
-    return newState;
+    return applyQuestionLogic(newState, cards);
   }
 
-  // ── Jack: skip ──
   if (firstCard.rank === 'J') {
-    newState.activeSuit = lastCard.suit;
-    newState.activeColour = COLOURS[lastCard.suit];
-    const skipCount = cards.length;
-    advanceTurn(newState, skipCount + 1);
-    return newState;
+    return applyJackLogic(newState, cards, lastCard);
   }
 
-  // ── King: reverse ──
   if (firstCard.rank === 'K') {
-    for (let i = 0; i < cards.length; i++) {
-      newState.direction *= -1;
-    }
-    newState.activeSuit = lastCard.suit;
-    newState.activeColour = COLOURS[lastCard.suit];
-    advanceTurn(newState);
-    return newState;
+    return applyKingLogic(newState, cards, lastCard);
   }
 
-  // ── Normal cards / stacked cards ──
+  return applyNormalLogic(newState, lastCard);
+}
+
+// ─── Card Logic Handlers ──────────────────────────────────────────────────────
+
+function applyAceLogic(newState, cards, playerId, options, type, oldState) {
+  // Refuse feeders
+  newState.activeFeed = false;
+  newState.feedStack = 0;
+
+  if (type === CARD_TYPES.SPECIAL_ACE) {
+    // Call a specific card
+    newState.specialAceCall = { callerId: playerId, card: options.calledCard };
+    newState.activeSuit = options.calledCard.suit;
+    newState.activeColour = COLOURS[options.calledCard.suit];
+  } else if (cards.length === 2) {
+    // Two regular aces: choose suit
+    newState.activeSuit = options.chosenSuit || oldState.activeSuit;
+    newState.activeColour = COLOURS[options.chosenSuit] || oldState.activeColour;
+    newState.specialAceCall = null;
+  } else {
+    // Single regular ace: choose suit
+    newState.activeSuit = options.chosenSuit || oldState.activeSuit;
+    newState.activeColour = COLOURS[options.chosenSuit] || oldState.activeColour;
+    newState.specialAceCall = null;
+  }
+  advanceTurn(newState);
+  return newState;
+}
+
+function applyFeederLogic(newState, cards, lastCard, oldState) {
+  if (!newState.activeFeed) newState.activeFeed = true;
+  for (const c of cards) {
+    newState.feedStack += feederValue(c);
+  }
+  newState.activeSuit = lastCard.rank === 'JOKER' ? oldState.activeSuit : lastCard.suit;
+  newState.activeColour = lastCard.colour;
+  advanceTurn(newState);
+  return newState;
+}
+
+function applyQuestionLogic(newState, cards) {
+  const questionCards = cards.filter(c => isQuestion(c));
+  const answerCards = cards.filter(c => !isQuestion(c));
+  const lastQuestion = questionCards[questionCards.length - 1];
+
+  newState.activeSuit = lastQuestion.suit;
+  newState.activeColour = COLOURS[lastQuestion.suit];
+
+  if (answerCards.length === 1) {
+    // Answer included — complete play, advance turn
+    newState.activeSuit = answerCards[0].suit;
+    newState.activeColour = COLOURS[answerCards[0].suit];
+    newState.awaitingAnswer = null;
+    advanceTurn(newState);
+  } else {
+    // No answer — turn stays, player must pick answer from deck
+    newState.awaitingAnswer = { questionSuit: lastQuestion.suit };
+  }
+  return newState;
+}
+
+function applyJackLogic(newState, cards, lastCard) {
+  newState.activeSuit = lastCard.suit;
+  newState.activeColour = COLOURS[lastCard.suit];
+  const skipCount = cards.length;
+  advanceTurn(newState, skipCount + 1);
+  return newState;
+}
+
+function applyKingLogic(newState, cards, lastCard) {
+  for (let i = 0; i < cards.length; i++) {
+    newState.direction *= -1;
+  }
+  newState.activeSuit = lastCard.suit;
+  newState.activeColour = COLOURS[lastCard.suit];
+  advanceTurn(newState);
+  return newState;
+}
+
+function applyNormalLogic(newState, lastCard) {
   newState.activeSuit = lastCard.suit;
   newState.activeColour = COLOURS[lastCard.suit];
   advanceTurn(newState);
