@@ -453,15 +453,16 @@ export default function Game() {
                 >
                   Pick {gameState.activeFeed ? gameState.feedStack : 'Card'}
                 </button>
-                {gameState.nikoKadiWindow === user?.id && !gameState.nikokadi[user?.id] && (
-                  <button
-                    onClick={declareNikoKadi}
-                    className="bg-purple-600 hover:bg-purple-500 text-white px-8 py-3 rounded-xl font-bold uppercase tracking-widest text-sm shadow-[0_4px_20px_rgba(147,51,234,0.6)] border border-purple-400 animate-pulse"
-                  >
-                    NIKO KADI!
-                  </button>
-                )}
               </>
+            )}
+
+            {gameState.nikoKadiWindow === user?.id && !gameState.nikokadi[user?.id] && (
+              <button
+                onClick={declareNikoKadi}
+                className="bg-purple-600 hover:bg-purple-500 text-white px-8 py-3 rounded-xl font-bold uppercase tracking-widest text-sm shadow-[0_4px_20px_rgba(147,51,234,0.6)] border border-purple-400 animate-pulse"
+              >
+                NIKO KADI!
+              </button>
             )}
           </div>
         )}
