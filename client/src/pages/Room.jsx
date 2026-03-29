@@ -15,8 +15,18 @@ export default function Room() {
     if (!socket) return;
 
     const handleRoomUpdate = (data) => setRoom(data);
-    const handleGameStart = () => navigate(`/game/${roomId}`);
-    const handleAppError = ({ message }) => setError(message);
+    const handleGameStart = () => {
+      localStorage.setItem('activeGameRoomId', roomId);
+      navigate(`/game/${roomId}`);
+    };
+    const handleAppError = ({ message }) => {
+      if (message === 'Game already started') {
+        localStorage.setItem('activeGameRoomId', roomId);
+        navigate(`/game/${roomId}`);
+        return;
+      }
+      setError(message);
+    };
 
     socket.on('room_update', handleRoomUpdate);
     socket.on('game_start', handleGameStart);

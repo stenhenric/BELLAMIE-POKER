@@ -60,16 +60,25 @@ function gameSocket(io) {
     socket.on('join_room', ({ roomId }) => {
       const room = rooms[roomId];
       if (!room) return emitAppError(socket, 'Room not found');
-      if (room.started) return emitAppError(socket, 'Game already started');
 
       const existingPlayer = room.players.find(player => player.id === socket.user.id);
       if (existingPlayer) {
         existingPlayer.socketId = socket.id;
         socket.join(roomId);
         socket.roomId = roomId;
+
+        if (room.started && room.state && !room.state.gameOver) {
+          socket.emit('game_start');
+          socket.emit('player_reconnected', { playerId: socket.user.id, username: socket.user.username });
+          setTimeout(() => broadcastGameState(io, room), 0);
+          return;
+        }
+
         emitRoomUpdate(io, room);
         return;
       }
+
+      if (room.started) return emitAppError(socket, 'Game already started');
 
       if (room.players.length >= room.maxPlayers)
         return emitAppError(socket, 'Room is full');
@@ -290,10 +299,18 @@ function gameSocket(io) {
     // ── Rejoin game (reconnect or page reload) ───────────────────
     socket.on('rejoin_game', ({ roomId }) => {
       const room = rooms[roomId];
-      if (!room || !room.started || room.state?.gameOver) return;
+      if (!room) return emitAppError(socket, 'Room not found');
+      if (!room.started || !room.state || room.state.gameOver) {
+        return emitAppError(socket, 'No active game');
+      }
 
       const player = room.players.find(p => p.id === socket.user.id);
       if (!player) return emitAppError(socket, 'You are not in this game');
+
+      const statePlayer = room.state.players.find(p => p.id === socket.user.id);
+      if (!statePlayer || statePlayer.eliminated) {
+        return emitAppError(socket, 'You are out of this game');
+      }
 
       player.socketId = socket.id;
       socket.join(roomId);
@@ -322,6 +339,58 @@ function gameSocket(io) {
       });
 
       io.to(roomId).emit('player_reconnected', { playerId: socket.user.id, username: socket.user.username });
+    });
+
+    // ── Surrender game and exit ───────────────────────────────────
+    socket.on('surrender_game', ({ roomId } = {}) => {
+      const targetRoomId = roomId || socket.roomId;
+      if (!targetRoomId) return emitAppError(socket, 'Not in a room');
+
+      const room = rooms[targetRoomId];
+      if (!room || !room.started || !room.state || room.state.gameOver) {
+        return emitAppError(socket, 'No active game');
+      }
+
+      const statePlayer = room.state.players.find(player => player.id === socket.user.id);
+      const roomPlayer = room.players.find(player => player.id === socket.user.id);
+      if (!statePlayer || !roomPlayer) return emitAppError(socket, 'You are not in this game');
+
+      const wasCurrentTurn = room.state.players[room.state.currentPlayerIndex]?.id === socket.user.id;
+
+      statePlayer.eliminated = true;
+      delete room.state.nikokadi[socket.user.id];
+      if (room.state.nikoKadiWindow === socket.user.id) room.state.nikoKadiWindow = null;
+      if (room.state.awaitingAnswer && wasCurrentTurn) room.state.awaitingAnswer = null;
+
+      roomPlayer.socketId = null;
+      socket.leave(targetRoomId);
+      if (socket.roomId === targetRoomId) {
+        delete socket.roomId;
+      }
+
+      socket.emit('surrender_success');
+      io.to(targetRoomId).emit('player_surrendered', { playerId: socket.user.id, username: socket.user.username });
+
+      const activePlayers = room.state.players.filter(player => !player.eliminated);
+      if (activePlayers.length === 1) {
+        room.state.gameOver = true;
+        room.state.winnerId = activePlayers[0].id;
+        io.to(targetRoomId).emit('game_over', { winnerId: activePlayers[0].id, username: activePlayers[0].username });
+        recordGameResult(room, activePlayers[0].id);
+        return;
+      }
+
+      if (activePlayers.length === 0) {
+        room.state.gameOver = true;
+        room.state.winnerId = null;
+        return;
+      }
+
+      if (wasCurrentTurn) {
+        advanceTurn(room.state);
+      }
+
+      broadcastGameState(io, room);
     });
 
     // ── Disconnect ───────────────────────────────────────────────
