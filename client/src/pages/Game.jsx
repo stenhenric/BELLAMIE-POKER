@@ -8,6 +8,17 @@ const SUIT_COLOURS = { hearts: 'text-red-500', diamonds: 'text-red-500', clubs: 
 
 const CARD_ORDER = ['special', 'A', 'JOKER', '2', '3', '4', '5', '6', '7', '8', 'Q', '9', '10', 'J', 'K'];
 
+function getCirclePositions(players, myId) {
+  const n = players.length;
+  const myIndex = players.findIndex(p => p.id === myId);
+  const base = myIndex === -1 ? 0 : myIndex;
+  return players.map((player, i) => {
+    const angleDeg = 90 + ((i - base) * 360 / n);
+    const angleRad = (angleDeg * Math.PI) / 180;
+    return { player, x: 50 + 40 * Math.cos(angleRad), y: 50 + 40 * Math.sin(angleRad) };
+  });
+}
+
 function sortHand(hand) {
   return [...hand].sort((a, b) => {
     const aKey = a.isSpecialAce ? 'special' : a.rank;
@@ -210,34 +221,64 @@ export default function Game() {
         </div>
       )}
 
-      {/* Players */}
-      <div className="flex gap-2 flex-wrap justify-center">
-        {gameState.players.map(p => (
+      {/* Circular table */}
+      <div className="relative w-80 h-80 mx-auto">
+        {/* Direction arrow SVG */}
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" style={{ zIndex: 1 }}>
+          <defs>
+            <marker id="arrowhead" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="auto">
+              <path d="M0,0 L0,4 L4,2 z" fill="#facc15" />
+            </marker>
+          </defs>
+          {(() => {
+            const positions = getCirclePositions(gameState.players, user?.id);
+            const currentIdx = gameState.players.findIndex(p => p.id === gameState.currentPlayerId);
+            const nextIdx = (currentIdx + gameState.direction + gameState.players.length) % gameState.players.length;
+            const from = positions[currentIdx];
+            const to = positions[nextIdx];
+            if (!from || !to) return null;
+            const dx = to.x - from.x, dy = to.y - from.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist === 0) return null;
+            const pad = 9;
+            return (
+              <line
+                x1={from.x + dx * (pad / dist)} y1={from.y + dy * (pad / dist)}
+                x2={from.x + dx * ((dist - pad) / dist)} y2={from.y + dy * ((dist - pad) / dist)}
+                stroke="#facc15" strokeWidth="1.5" markerEnd="url(#arrowhead)"
+              />
+            );
+          })()}
+        </svg>
+
+        {/* Center: top card + direction indicator */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none">
+          {topCard && <CardDisplay card={topCard} />}
+          <div className="text-white text-2xl font-bold mt-1 select-none">
+            {gameState.direction === 1 ? '↻' : '↺'}
+          </div>
+        </div>
+
+        {/* Players around the circle */}
+        {getCirclePositions(gameState.players, user?.id).map(({ player, x, y }) => (
           <div
-            key={p.id}
-            className={`bg-white rounded-lg px-3 py-2 text-sm text-center min-w-20
-              ${p.id === gameState.currentPlayerId ? 'ring-2 ring-yellow-400' : ''}
-              ${p.eliminated ? 'opacity-40 line-through' : ''}
-            `}
+            key={player.id}
+            className="absolute z-20 transform -translate-x-1/2 -translate-y-1/2"
+            style={{ left: `${x}%`, top: `${y}%` }}
           >
-            <div className="font-semibold">{p.username}</div>
-            <div className="text-gray-500">{p.cardCount} cards</div>
-            {gameState.nikokadi[p.id] && (
-              <div className="text-purple-600 text-xs font-bold animate-pulse">🔔 NIKO KADI</div>
-            )}
-            {gameState.nikoKadiWindow === p.id && !gameState.nikokadi[p.id] && (
-              <div className="text-yellow-500 text-xs font-bold">⏳ must declare...</div>
-            )}
+            <div className={`rounded-lg px-2 py-1 text-xs text-center w-20
+              ${player.id === gameState.currentPlayerId ? 'bg-yellow-400 ring-2 ring-yellow-200 animate-pulse' : 'bg-white'}
+              ${player.eliminated ? 'opacity-40' : ''}
+            `}>
+              <div className={`font-semibold truncate text-xs ${player.eliminated ? 'line-through' : ''}`}>{player.username}</div>
+              <div className="text-gray-600 text-xs">{player.cardCount} cards</div>
+              {gameState.nikokadi[player.id] && <div className="text-purple-600 text-xs font-bold animate-pulse">🔔 NK</div>}
+              {gameState.nikoKadiWindow === player.id && !gameState.nikokadi[player.id] && (
+                <div className="text-orange-500 text-xs font-bold">⏳ NK!</div>
+              )}
+            </div>
           </div>
         ))}
-      </div>
-
-      {/* Discard pile */}
-      <div className="flex justify-center my-2">
-        <div className="text-center">
-          <p className="text-white text-sm mb-2">Top Card</p>
-          {topCard && <CardDisplay card={topCard} />}
-        </div>
       </div>
 
       {/* Turn indicator */}
