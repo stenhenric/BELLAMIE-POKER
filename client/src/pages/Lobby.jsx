@@ -37,7 +37,7 @@ export default function Lobby() {
       <div className="absolute inset-0 bg-black/40" />
       <div className="relative bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-green-800">FIDEL BELLAMIE</h1>
+          <h1 className="text-2xl font-bold text-green-700 drop-shadow tracking-wide">FIDEL'S POKER</h1>
           <div className="flex items-center gap-3">
             <span className="text-gray-600 text-sm">@{user?.username}</span>
             <button onClick={logout} className="text-sm text-red-500 hover:underline">Logout</button>
