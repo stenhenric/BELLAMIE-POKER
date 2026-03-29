@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import bgImage from '../assets/bg.jpg';
 
 export default function Login() {
   const { login } = useAuth();
@@ -26,39 +25,44 @@ export default function Login() {
   };
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center"
-      style={{ backgroundImage: `url(${bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-    >
-      <div className="absolute inset-0 bg-black/40" />
-      <div className="relative bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center text-gray-900 mb-2 tracking-wide">FIDEL'S POKER</h1>
-        <p className="text-center text-gray-500 mb-6">Sign in to play</p>
+    <div className="min-h-screen flex items-center justify-center bg-felt p-4 font-body">
+      <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+      <div className="relative glass-panel rounded-3xl p-8 w-full max-w-md z-10 text-center">
 
-        {error && <p className="bg-red-100 text-red-600 p-3 rounded mb-4 text-sm">{error}</p>}
+        <div className="mb-8">
+          <h1 className="text-4xl font-heading font-bold mb-2 tracking-widest text-gold-gradient drop-shadow-lg">
+            FIDEL'S POKER
+          </h1>
+          <div className="h-px w-24 mx-auto bg-gradient-to-r from-transparent via-amber-500 to-transparent opacity-50 mb-3"></div>
+          <p className="text-amber-100/70 uppercase tracking-widest text-xs font-semibold">Premium Card Lounge</p>
+        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="email"
-            placeholder="Email"
-            value={form.email}
-            onChange={e => setForm({ ...form, email: e.target.value })}
-            className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
-            required
-          />
+        {error && <p className="bg-red-900/50 border border-red-500/50 text-red-200 p-3 rounded-lg mb-6 text-sm backdrop-blur-sm">{error}</p>}
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <input
+              type="email"
+              placeholder="EMAIL ADDRESS"
+              value={form.email}
+              onChange={e => setForm({ ...form, email: e.target.value })}
+              className="w-full input-dark rounded-xl px-5 py-4 text-sm font-medium tracking-wide"
+              required
+            />
+          </div>
           <div className="relative">
             <input
               type={showPassword ? 'text' : 'password'}
-              placeholder="Password"
+              placeholder="PASSWORD"
               value={form.password}
               onChange={e => setForm({ ...form, password: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full input-dark rounded-xl px-5 py-4 pr-12 text-sm font-medium tracking-wide"
               required
             />
             <button
               type="button"
               onClick={() => setShowPassword(prev => !prev)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-500/50 hover:text-amber-400 transition-colors"
             >
               {showPassword ? (
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -75,16 +79,16 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-green-700 text-white py-2 rounded-lg font-semibold hover:bg-green-800 disabled:opacity-50"
+            className="w-full btn-gold rounded-xl py-4 font-bold tracking-widest uppercase mt-2 text-sm"
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? 'Authenticating...' : 'Enter Lounge'}
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-500 mt-4">
-          No account?{' '}
-          <Link to="/register" className="text-green-700 font-medium hover:underline">
-            Register
+        <p className="text-center text-sm text-stone-400 mt-8 font-medium">
+          First time here?{' '}
+          <Link to="/register" className="text-amber-400 hover:text-amber-300 transition-colors uppercase tracking-wide ml-1">
+            Request Access
           </Link>
         </p>
       </div>

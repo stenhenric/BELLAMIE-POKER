@@ -37,41 +37,64 @@ export default function Room() {
   const isHost = room?.players[0]?.id === user?.id;
 
   return (
-    <div className="min-h-screen bg-green-900 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-        <h1 className="text-2xl font-bold text-green-800 mb-1">Room</h1>
-        <p className="text-gray-500 text-sm mb-6 font-mono tracking-widest text-lg font-bold">{roomId}</p>
+    <div className="min-h-screen flex items-center justify-center bg-felt p-4 font-body">
+      <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+      <div className="relative glass-panel rounded-3xl shadow-2xl p-8 w-full max-w-md z-10">
 
-        {error && <p className="bg-red-100 text-red-600 p-3 rounded mb-4 text-sm">{error}</p>}
+        <div className="text-center mb-6">
+          <h1 className="text-3xl font-heading font-bold tracking-widest text-gold-gradient drop-shadow-md mb-2">
+            VIP TABLE
+          </h1>
+          <div className="inline-block bg-black/40 border border-amber-500/30 rounded-lg px-6 py-2">
+            <p className="text-amber-400/80 uppercase text-xs tracking-[0.2em] mb-1 font-bold">Access Code</p>
+            <p className="text-stone-100 font-mono tracking-[0.3em] text-2xl font-bold">{roomId}</p>
+          </div>
+        </div>
 
-        <div className="mb-6">
-          <h2 className="font-semibold text-gray-700 mb-2">
-            Players ({room?.players.length || 0}/{room?.maxPlayers || '?'})
+        {error && <p className="bg-red-900/50 border border-red-500/50 text-red-200 p-3 rounded-lg mb-6 text-sm backdrop-blur-sm text-center">{error}</p>}
+
+        <div className="bg-black/20 border border-amber-500/20 rounded-2xl p-5 backdrop-blur-sm mb-6">
+          <h2 className="font-bold text-amber-500 uppercase tracking-widest text-sm mb-4 flex justify-between items-center">
+            <span>Seated Players</span>
+            <span className="bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded text-xs">
+              {room?.players.length || 0} / {room?.maxPlayers || '?'}
+            </span>
           </h2>
-          <ul className="space-y-2">
+
+          <ul className="space-y-3">
             {room?.players.map((p, i) => (
-              <li key={p.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-4 py-2">
-                <span>{i === 0 ? '👑' : '🃏'}</span>
-                <span className="font-medium">{p.username}</span>
-                {p.id === user?.id && <span className="text-xs text-gray-400">(you)</span>}
+              <li key={p.id} className="flex items-center gap-3 bg-stone-900/50 border border-stone-700/50 rounded-xl px-4 py-3">
+                <span className="text-xl filter drop-shadow-md">{i === 0 ? '👑' : '🃏'}</span>
+                <span className="font-bold text-stone-200 tracking-wide text-sm">{p.username}</span>
+                {p.id === user?.id && <span className="ml-auto text-xs font-bold text-amber-500/60 uppercase tracking-widest">You</span>}
+              </li>
+            ))}
+
+            {/* Empty seats placeholders */}
+            {room && Array.from({ length: room.maxPlayers - room.players.length }).map((_, i) => (
+              <li key={`empty-${i}`} className="flex items-center gap-3 bg-stone-900/20 border border-stone-800/50 border-dashed rounded-xl px-4 py-3 opacity-50">
+                <span className="text-xl grayscale opacity-30">🪑</span>
+                <span className="font-medium text-stone-500 tracking-wide text-sm italic">Empty Seat</span>
               </li>
             ))}
           </ul>
         </div>
 
-        <p className="text-sm text-gray-400 text-center mb-4">
-          {isHost ? 'You are the host. Start when ready!' : 'Waiting for host to start...'}
-        </p>
+        <div className="text-center">
+          <p className="text-sm text-amber-100/50 mb-5 font-medium tracking-wide">
+            {isHost ? 'Waiting for players to join the table...' : 'Waiting for the dealer (host) to begin...'}
+          </p>
 
-        {isHost && (
-          <button
-            onClick={startGame}
-            disabled={!room || room.players.length < 2}
-            className="w-full bg-green-700 text-white py-2 rounded-lg font-semibold hover:bg-green-800 disabled:opacity-40"
-          >
-            Start Game
-          </button>
-        )}
+          {isHost && (
+            <button
+              onClick={startGame}
+              disabled={!room || room.players.length < 2}
+              className="w-full btn-gold rounded-xl py-4 font-bold tracking-widest uppercase text-sm shadow-lg"
+            >
+              Deal Cards
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
