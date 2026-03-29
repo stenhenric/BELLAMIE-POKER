@@ -107,10 +107,18 @@ function gameSocket(io) {
       if (state.nikoKadiWindow && state.nikoKadiWindow !== socket.user.id) {
         const missedId = state.nikoKadiWindow;
         if (!state.nikokadi[missedId]) {
-          // Fine the player who missed declaring
-          const { newState: fineState } = forcePick(state, missedId, 1);
+          // Fine the player who missed declaring — manually add card without advancing turn
+          const fineState = JSON.parse(JSON.stringify(state));
+          if (fineState.deck.length === 0 && fineState.discardPile.length > 1) {
+            const top = fineState.discardPile[fineState.discardPile.length - 1];
+            fineState.deck = fineState.discardPile.slice(0, -1).sort(() => Math.random() - 0.5);
+            fineState.discardPile = [top];
+          }
+          if (fineState.deck.length > 0) {
+            fineState.hands[missedId].push(fineState.deck.shift());
+          }
+          fineState.nikoKadiWindow = null;
           room.state = fineState;
-          room.state.nikoKadiWindow = null;
           io.to(socket.roomId).emit('niko_kadi_missed', {
             playerId: missedId,
             username: room.players.find(p => p.id === missedId)?.username,
