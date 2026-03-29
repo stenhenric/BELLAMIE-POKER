@@ -7,6 +7,7 @@ const {
 } = require('../utils/gameEngine');
 const User = require('../models/User');
 const Game = require('../models/Game');
+const logger = require('../utils/logger');
 
 // In-memory game rooms: { [roomId]: { players, state, maxPlayers } }
 const rooms = {};
@@ -38,7 +39,7 @@ function gameSocket(io) {
   });
 
   io.on('connection', (socket) => {
-    console.log(`User connected: ${socket.user.username}`);
+    logger.info('User connected', { username: socket.user.username, socketId: socket.id });
 
     // ── Create room ──────────────────────────────────────────────
     socket.on('create_room', ({ maxPlayers = 4 }) => {
@@ -115,7 +116,7 @@ function gameSocket(io) {
         });
         room.gameId = game._id.toString();
       } catch (err) {
-        console.error('Failed to record game start:', err.message);
+        logger.error('Failed to record game start', { error: err.message });
       }
 
       io.to(socket.roomId).emit('game_start');
@@ -394,7 +395,7 @@ function gameSocket(io) {
     // ── Disconnect ───────────────────────────────────────────────
     socket.on('disconnect', () => {
       const room = rooms[socket.roomId];
-      if (!room) return console.log(`User disconnected: ${socket.user.username}`);
+      if (!room) { logger.info('User disconnected without room', { username: socket.user.username, socketId: socket.id }); return; }
 
       if (!room.started) {
         room.players = room.players.filter(p => p.id !== socket.user.id);
@@ -409,7 +410,7 @@ function gameSocket(io) {
         io.to(socket.roomId).emit('player_disconnected', { playerId: socket.user.id, username: socket.user.username });
       }
 
-      console.log(`User disconnected: ${socket.user.username}`);
+      logger.info('User disconnected', { username: socket.user.username, socketId: socket.id });
     });
   });
 }
@@ -460,7 +461,7 @@ async function recordGameResult(room, winnerId) {
       );
     }
   } catch (err) {
-    console.error('Failed to record game result:', err.message);
+    logger.error('Failed to record game result', { error: err.message });
   }
 }
 
