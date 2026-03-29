@@ -311,7 +311,7 @@ function canPlay(cards, state, playerId, options = {}) {
 // ─── Apply a play ─────────────────────────────────────────────────────────────
 function applyPlay(cards, state, playerId, options = {}) {
   // options: { chosenSuit, calledCard } for aces / special ace
-  const newState = JSON.parse(JSON.stringify(state)); // deep clone
+  const newState = structuredClone(state); // deep clone
   const firstCard = cards[0];
   const lastCard = cards[cards.length - 1];
   const type = getCardType(firstCard);
@@ -438,7 +438,7 @@ function advanceTurn(state, steps = 1) {
 // ─── Force pick cards ─────────────────────────────────────────────────────────
 function forcePick(state, playerId, count, options = {}) {
   const { advanceTurnAfterPick = true, resetFeed = true } = options;
-  const newState = JSON.parse(JSON.stringify(state));
+  const newState = structuredClone(state);
   const picks = [];
 
   for (let i = 0; i < count; i++) {
@@ -492,7 +492,7 @@ function checkWin(state, playerId) {
 
 // ─── NIKO KADI declaration ────────────────────────────────────────────────────
 function declareNikoKadi(state, playerId) {
-  const newState = JSON.parse(JSON.stringify(state));
+  const newState = structuredClone(state);
   newState.nikokadi[playerId] = true;
   return newState;
 }
