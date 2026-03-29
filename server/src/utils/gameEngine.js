@@ -308,6 +308,7 @@ function canPlay(cards, state, playerId, options = {}) {
   return returnValid();
 }
 
+
 // ─── Apply a play ─────────────────────────────────────────────────────────────
 function applyPlay(cards, state, playerId, options = {}) {
   // options: { chosenSuit, calledCard } for aces / special ace
@@ -332,87 +333,108 @@ function applyPlay(cards, state, playerId, options = {}) {
 
   syncNikoKadiStatus(newState, playerId);
 
-  // ── Ace logic ──
+  // ── Route to specific logic handlers ──
   if (type === CARD_TYPES.ACE || type === CARD_TYPES.SPECIAL_ACE) {
-    // Refuse feeders
-    newState.activeFeed = false;
-    newState.feedStack = 0;
-
-    if (type === CARD_TYPES.SPECIAL_ACE) {
-      // Call a specific card
-      newState.specialAceCall = { callerId: playerId, card: options.calledCard };
-      newState.activeSuit = options.calledCard.suit;
-      newState.activeColour = COLOURS[options.calledCard.suit];
-    } else if (cards.length === 2) {
-      // Two regular aces: choose suit
-      newState.activeSuit = options.chosenSuit || state.activeSuit;
-      newState.activeColour = COLOURS[options.chosenSuit] || state.activeColour;
-      newState.specialAceCall = null;
-    } else {
-      // Single regular ace: choose suit
-      newState.activeSuit = options.chosenSuit || state.activeSuit;
-      newState.activeColour = COLOURS[options.chosenSuit] || state.activeColour;
-      newState.specialAceCall = null;
-    }
-    advanceTurn(newState);
-    return newState;
+    return applyAceLogic(newState, cards, playerId, options, type, state);
   }
 
-  // ── Feeder logic ──
   if (isFeeder(firstCard)) {
-    if (!newState.activeFeed) newState.activeFeed = true;
-    for (const c of cards) {
-      newState.feedStack += feederValue(c);
-    }
-    newState.activeSuit = lastCard.rank === 'JOKER' ? state.activeSuit : lastCard.suit;
-    newState.activeColour = lastCard.colour;
-    advanceTurn(newState);
-    return newState;
+    return applyFeederLogic(newState, cards, lastCard, state);
   }
 
-  // ── Question logic ──
   if (isQuestion(firstCard)) {
-    const questionCards = cards.filter(c => isQuestion(c));
-    const answerCards = cards.filter(c => !isQuestion(c));
-    const lastQuestion = questionCards[questionCards.length - 1];
-
-    newState.activeSuit = lastQuestion.suit;
-    newState.activeColour = COLOURS[lastQuestion.suit];
-
-    if (answerCards.length === 1) {
-      // Answer included — complete play, advance turn
-      newState.activeSuit = answerCards[0].suit;
-      newState.activeColour = COLOURS[answerCards[0].suit];
-      newState.awaitingAnswer = null;
-      advanceTurn(newState);
-    } else {
-      // No answer — turn stays, player must pick answer from deck
-      newState.awaitingAnswer = { questionSuit: lastQuestion.suit };
-    }
-    return newState;
+    return applyQuestionLogic(newState, cards);
   }
 
-  // ── Jack: skip ──
   if (firstCard.rank === 'J') {
-    newState.activeSuit = lastCard.suit;
-    newState.activeColour = COLOURS[lastCard.suit];
-    const skipCount = cards.length;
-    advanceTurn(newState, skipCount + 1);
-    return newState;
+    return applyJackLogic(newState, cards, lastCard);
   }
 
-  // ── King: reverse ──
   if (firstCard.rank === 'K') {
-    for (let i = 0; i < cards.length; i++) {
-      newState.direction *= -1;
-    }
-    newState.activeSuit = lastCard.suit;
-    newState.activeColour = COLOURS[lastCard.suit];
-    advanceTurn(newState);
-    return newState;
+    return applyKingLogic(newState, cards, lastCard);
   }
 
-  // ── Normal cards / stacked cards ──
+  return applyNormalLogic(newState, lastCard);
+}
+
+// ─── Card Logic Handlers ──────────────────────────────────────────────────────
+
+function applyAceLogic(newState, cards, playerId, options, type, oldState) {
+  // Refuse feeders
+  newState.activeFeed = false;
+  newState.feedStack = 0;
+
+  if (type === CARD_TYPES.SPECIAL_ACE) {
+    // Call a specific card
+    newState.specialAceCall = { callerId: playerId, card: options.calledCard };
+    newState.activeSuit = options.calledCard.suit;
+    newState.activeColour = COLOURS[options.calledCard.suit];
+  } else if (cards.length === 2) {
+    // Two regular aces: choose suit
+    newState.activeSuit = options.chosenSuit || oldState.activeSuit;
+    newState.activeColour = COLOURS[options.chosenSuit] || oldState.activeColour;
+    newState.specialAceCall = null;
+  } else {
+    // Single regular ace: choose suit
+    newState.activeSuit = options.chosenSuit || oldState.activeSuit;
+    newState.activeColour = COLOURS[options.chosenSuit] || oldState.activeColour;
+    newState.specialAceCall = null;
+  }
+  advanceTurn(newState);
+  return newState;
+}
+
+function applyFeederLogic(newState, cards, lastCard, oldState) {
+  if (!newState.activeFeed) newState.activeFeed = true;
+  for (const c of cards) {
+    newState.feedStack += feederValue(c);
+  }
+  newState.activeSuit = lastCard.rank === 'JOKER' ? oldState.activeSuit : lastCard.suit;
+  newState.activeColour = lastCard.colour;
+  advanceTurn(newState);
+  return newState;
+}
+
+function applyQuestionLogic(newState, cards) {
+  const questionCards = cards.filter(c => isQuestion(c));
+  const answerCards = cards.filter(c => !isQuestion(c));
+  const lastQuestion = questionCards[questionCards.length - 1];
+
+  newState.activeSuit = lastQuestion.suit;
+  newState.activeColour = COLOURS[lastQuestion.suit];
+
+  if (answerCards.length === 1) {
+    // Answer included — complete play, advance turn
+    newState.activeSuit = answerCards[0].suit;
+    newState.activeColour = COLOURS[answerCards[0].suit];
+    newState.awaitingAnswer = null;
+    advanceTurn(newState);
+  } else {
+    // No answer — turn stays, player must pick answer from deck
+    newState.awaitingAnswer = { questionSuit: lastQuestion.suit };
+  }
+  return newState;
+}
+
+function applyJackLogic(newState, cards, lastCard) {
+  newState.activeSuit = lastCard.suit;
+  newState.activeColour = COLOURS[lastCard.suit];
+  const skipCount = cards.length;
+  advanceTurn(newState, skipCount + 1);
+  return newState;
+}
+
+function applyKingLogic(newState, cards, lastCard) {
+  for (let i = 0; i < cards.length; i++) {
+    newState.direction *= -1;
+  }
+  newState.activeSuit = lastCard.suit;
+  newState.activeColour = COLOURS[lastCard.suit];
+  advanceTurn(newState);
+  return newState;
+}
+
+function applyNormalLogic(newState, lastCard) {
   newState.activeSuit = lastCard.suit;
   newState.activeColour = COLOURS[lastCard.suit];
   advanceTurn(newState);
