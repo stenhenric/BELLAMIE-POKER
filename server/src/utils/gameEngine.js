@@ -171,11 +171,9 @@ function createGameState(players) {
   };
 }
 
-// ─── Validate a play ──────────────────────────────────────────────────────────
-function canPlay(cards, state, playerId, options = {}) {
-  if (!cards || cards.length === 0) return returnInvalid('No cards selected');
+// ─── Refactored Validation Helpers ────────────────────────────────────────────
 
-  const topCard = state.discardPile[state.discardPile.length - 1];
+function validateSpecialAceCall(cards, state, options) {
   const firstCard = cards[0];
   const isTwoRegularAces = cards.length === 2 && cards.every(card => getCardType(card) === CARD_TYPES.ACE);
 
@@ -186,24 +184,102 @@ function canPlay(cards, state, playerId, options = {}) {
       }
     }
   }
+  return returnValid();
+}
+
+function validateAces(cards, options) {
+  const firstCard = cards[0];
+  if (firstCard.isSpecialAce && !isValidCalledCard(options.calledCard)) {
+    return returnInvalid('Special Ace must call a specific card');
+  }
+
+  if (cards.length === 2) {
+    const types = cards.map(getCardType);
+    if (types.includes(CARD_TYPES.ACE) && types.includes(CARD_TYPES.SPECIAL_ACE)) {
+      return returnInvalid('Cannot stack Regular Ace with Special Ace');
+    }
+    if (types.every(t => t === CARD_TYPES.ACE)) return returnValid();
+  }
+  if (cards.length > 2) return returnInvalid('Cannot stack more than 2 Aces');
+  return returnValid();
+}
+
+function validateQuestions(cards, state, topCard) {
+  const firstCard = cards[0];
+
+  if (firstCard.suit !== state.activeSuit && firstCard.rank !== topCard.rank) {
+    return returnInvalid(`Question must match suit: ${state.activeSuit}`);
+  }
+
+  const questionCards = cards.filter(c => isQuestion(c));
+  const answerCards = cards.filter(c => !isQuestion(c));
+
+  if (answerCards.length > 1) {
+    return returnInvalid('Only one answer card allowed');
+  }
+
+  for (let i = 1; i < questionCards.length; i++) {
+    const prev = questionCards[i - 1];
+    const curr = questionCards[i];
+    if (curr.rank !== prev.rank && curr.suit !== prev.suit) {
+      return returnInvalid('Question chain: each card must share rank or suit with the previous');
+    }
+  }
+
+  if (answerCards.length === 1) {
+    const answer = answerCards[0];
+    const lastQuestion = questionCards[questionCards.length - 1];
+    const invalid = isFeeder(answer) || isAce(answer) || answer.rank === 'J' || answer.rank === 'K' || answer.rank === 'Q';
+    if (invalid) return returnInvalid('Invalid answer card');
+    if (answer.suit !== lastQuestion.suit) {
+      return returnInvalid(`Answer must match suit of last question: ${lastQuestion.suit}`);
+    }
+  }
+
+  return returnValid();
+}
+
+function validateStacking(cards, state, topCard) {
+  const firstCard = cards[0];
+  const stackable = ['4','5','6','7','9','10','J','Q','K','8'];
+
+  if (stackable.includes(firstCard.rank) && firstCard.rank === topCard.rank) {
+    if (!cards.every(c => c.rank === firstCard.rank)) {
+      return returnInvalid('Stacked cards must have the same rank');
+    }
+    return returnValid();
+  }
+
+  if (cards.length > 1) {
+    const rank = firstCard.rank;
+    if (!cards.every(c => c.rank === rank)) {
+      return returnInvalid('Stacked cards must have the same rank');
+    }
+    if (!stackable.includes(rank)) {
+      return returnInvalid(`${rank} cannot be stacked`);
+    }
+    if (firstCard.suit !== state.activeSuit) {
+      return returnInvalid(`First card must match suit: ${state.activeSuit}`);
+    }
+    return returnValid();
+  }
+
+  return null; // Signals to continue validation if not stacking
+}
+
+// ─── Validate a play ──────────────────────────────────────────────────────────
+function canPlay(cards, state, playerId, options = {}) {
+  if (!cards || cards.length === 0) return returnInvalid('No cards selected');
+
+  const topCard = state.discardPile[state.discardPile.length - 1];
+  const firstCard = cards[0];
+
+  const specialAceCheck = validateSpecialAceCall(cards, state, options);
+  if (!specialAceCheck.valid) return specialAceCheck;
 
   // ── Aces can always be played ──
   if (isAce(firstCard)) {
-    if (firstCard.isSpecialAce && !isValidCalledCard(options.calledCard)) {
-      return returnInvalid('Special Ace must call a specific card');
-    }
-
-    // Cannot stack regular + special ace
-    if (cards.length === 2) {
-      const types = cards.map(getCardType);
-      if (types.includes(CARD_TYPES.ACE) && types.includes(CARD_TYPES.SPECIAL_ACE)) {
-        return returnInvalid('Cannot stack Regular Ace with Special Ace');
-      }
-      // Only exactly 2 regular aces allowed stacked
-      if (types.every(t => t === CARD_TYPES.ACE)) return returnValid();
-    }
-    if (cards.length > 2) return returnInvalid('Cannot stack more than 2 Aces');
-    return returnValid();
+    return validateAces(cards, options);
   }
 
   // ── Active feed: only feeders or aces allowed ──
@@ -220,39 +296,7 @@ function canPlay(cards, state, playerId, options = {}) {
 
   // ── Question cards: questions + answer played together ──
   if (isQuestion(firstCard)) {
-    // First question must match active suit or same rank as top card
-    if (firstCard.suit !== state.activeSuit && firstCard.rank !== topCard.rank) {
-      return returnInvalid(`Question must match suit: ${state.activeSuit}`);
-    }
-
-    const questionCards = cards.filter(c => isQuestion(c));
-    const answerCards = cards.filter(c => !isQuestion(c));
-
-    if (answerCards.length > 1) {
-      return returnInvalid('Only one answer card allowed');
-    }
-
-    // Validate question chain: each next question must share rank OR suit with previous
-    for (let i = 1; i < questionCards.length; i++) {
-      const prev = questionCards[i - 1];
-      const curr = questionCards[i];
-      if (curr.rank !== prev.rank && curr.suit !== prev.suit) {
-        return returnInvalid('Question chain: each card must share rank or suit with the previous');
-      }
-    }
-
-    // Validate answer if included
-    if (answerCards.length === 1) {
-      const answer = answerCards[0];
-      const lastQuestion = questionCards[questionCards.length - 1];
-      const invalid = isFeeder(answer) || isAce(answer) || answer.rank === 'J' || answer.rank === 'K' || answer.rank === 'Q';
-      if (invalid) return returnInvalid('Invalid answer card');
-      if (answer.suit !== lastQuestion.suit) {
-        return returnInvalid(`Answer must match suit of last question: ${lastQuestion.suit}`);
-      }
-    }
-
-    return returnValid();
+    return validateQuestions(cards, state, topCard);
   }
 
   // ── Joker: follows colour ──
@@ -271,29 +315,9 @@ function canPlay(cards, state, playerId, options = {}) {
     return returnValid();
   }
 
-  // ── Same rank as top card: always playable (single or stacked) ──
-  const stackable = ['4','5','6','7','9','10','J','Q','K','8'];
-  if (stackable.includes(firstCard.rank) && firstCard.rank === topCard.rank) {
-    if (!cards.every(c => c.rank === firstCard.rank)) {
-      return returnInvalid('Stacked cards must have the same rank');
-    }
-    return returnValid();
-  }
-
-  // ── Stacking same-rank cards (must match suit for first card) ──
-  if (cards.length > 1) {
-    const rank = firstCard.rank;
-    if (!cards.every(c => c.rank === rank)) {
-      return returnInvalid('Stacked cards must have the same rank');
-    }
-    if (!stackable.includes(rank)) {
-      return returnInvalid(`${rank} cannot be stacked`);
-    }
-    if (firstCard.suit !== state.activeSuit) {
-      return returnInvalid(`First card must match suit: ${state.activeSuit}`);
-    }
-    return returnValid();
-  }
+  // ── Stacking cards ──
+  const stackingCheck = validateStacking(cards, state, topCard);
+  if (stackingCheck) return stackingCheck;
 
   // ── Normal / special single card: must match suit ──
   if (firstCard.suit !== state.activeSuit) {
