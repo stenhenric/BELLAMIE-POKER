@@ -32,7 +32,7 @@ export default function Login() {
     >
       <div className="absolute inset-0 bg-black/40" />
       <div className="relative bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center text-green-700 mb-2 drop-shadow tracking-wide">FIDEL'S POKER</h1>
+        <h1 className="text-3xl font-bold text-center text-gray-900 mb-2 tracking-wide">FIDEL'S POKER</h1>
         <p className="text-center text-gray-500 mb-6">Sign in to play</p>
 
         {error && <p className="bg-red-100 text-red-600 p-3 rounded mb-4 text-sm">{error}</p>}
