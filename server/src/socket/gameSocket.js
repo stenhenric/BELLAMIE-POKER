@@ -3,6 +3,7 @@ const { randomUUID } = require('crypto');
 const {
   createGameState, normalizeCardsForPlay, canPlay, applyPlay,
   advanceTurn, forcePick, checkWin, declareNikoKadi, syncNikoKadiStatus,
+  reshuffleDeck,
 } = require('../utils/gameEngine');
 const User = require('../models/User');
 const Game = require('../models/Game');
@@ -205,10 +206,7 @@ function gameSocket(io) {
 
       const newState = JSON.parse(JSON.stringify(state));
       if (newState.deck.length === 0) {
-        const top = newState.discardPile[newState.discardPile.length - 1];
-        const reshuffled = newState.discardPile.slice(0, -1).sort(() => Math.random() - 0.5);
-        newState.discardPile = [top];
-        newState.deck = reshuffled;
+        reshuffleDeck(newState);
       }
 
       if (newState.deck.length > 0) {
