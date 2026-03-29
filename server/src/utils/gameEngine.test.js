@@ -37,3 +37,23 @@ describe('getCardType', () => {
     expect(getCardType({ rank: '10', suit: 'clubs' })).toBe(CARD_TYPES.NORMAL);
   });
 });
+
+describe('shuffle', () => {
+  test('should shuffle the deck without losing or adding cards', () => {
+    const { shuffle } = require('./gameEngine');
+    const deck = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }];
+    const shuffled = shuffle(deck);
+
+    expect(shuffled.length).toBe(deck.length);
+    expect(shuffled).toEqual(expect.arrayContaining(deck));
+    expect(deck).toEqual(expect.arrayContaining(shuffled));
+  });
+
+  test('should not mutate the original deck', () => {
+    const { shuffle } = require('./gameEngine');
+    const deck = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    const deckCopy = [...deck];
+    shuffle(deck);
+    expect(deck).toEqual(deckCopy);
+  });
+});
