@@ -204,7 +204,7 @@ function gameSocket(io) {
       if (currentPlayer.id !== socket.user.id)
         return emitAppError(socket, 'Not your turn');
 
-      const newState = JSON.parse(JSON.stringify(state));
+      const newState = structuredClone(state);
       if (newState.deck.length === 0) {
         reshuffleDeck(newState);
       }
