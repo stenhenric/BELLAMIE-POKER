@@ -295,29 +295,6 @@ function gameSocket(io) {
       broadcastGameState(io, room);
     });
 
-    // ── Alert Niko Kadi ───────────────────────────────────────────
-    socket.on('alert_niko_kadi', () => {
-      const room = rooms[socket.roomId];
-      if (!room || !room.state) return;
-
-      const state = room.state;
-      const targetId = state.nikoKadiWindow;
-
-      if (targetId && targetId !== socket.user.id && !state.nikokadi[targetId]) {
-        const { newState } = forcePick(state, targetId, 1, {
-          advanceTurnAfterPick: false,
-          resetFeed: false,
-        });
-        newState.nikoKadiWindow = null;
-        room.state = newState;
-        io.to(socket.roomId).emit('niko_kadi_missed', {
-          playerId: targetId,
-          username: room.players.find(p => p.id === targetId)?.username,
-        });
-        broadcastGameState(io, room);
-      }
-    });
-
     // ── Rejoin game (reconnect or page reload) ───────────────────
     socket.on('rejoin_game', ({ roomId }) => {
       const room = rooms[roomId];
