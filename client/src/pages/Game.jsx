@@ -76,6 +76,10 @@ export default function Game() {
   const [gameOver, setGameOver] = useState(null);
   const messageTimeoutRef = useRef(null);
 
+  const circlePositions = useMemo(() => {
+    return getCirclePositions(gameState?.players || [], user?.id);
+  }, [gameState?.players, user?.id]);
+
   const flashMessage = useEffectEvent((nextMessage, duration = 3000) => {
     setMessage(nextMessage);
     window.clearTimeout(messageTimeoutRef.current);
@@ -320,7 +324,7 @@ export default function Game() {
             </marker>
           </defs>
           {(() => {
-            const positions = getCirclePositions(gameState.players, user?.id);
+            const positions = circlePositions;
             const currentIdx = gameState.players.findIndex(p => p.id === gameState.currentPlayerId);
             const nextIdx = (currentIdx + gameState.direction + gameState.players.length) % gameState.players.length;
             const from = positions[currentIdx];
@@ -358,7 +362,7 @@ export default function Game() {
         </div>
 
         {/* Players around the circle */}
-        {getCirclePositions(gameState.players, user?.id).map(({ player, x, y }) => (
+        {circlePositions.map(({ player, x, y }) => (
           <div
             key={player.id}
             className="absolute z-20 transform -translate-x-1/2 -translate-y-1/2"
