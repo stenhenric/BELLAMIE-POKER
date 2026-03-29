@@ -39,7 +39,7 @@ export default function Lobby() {
 
         <div className="flex justify-between items-center mb-8 border-b border-amber-500/20 pb-4">
           <h1 className="text-2xl font-heading font-bold tracking-widest text-gold-gradient drop-shadow-md">
-            FIDEL'S POKER
+            POKER WITH STEN
           </h1>
           <div className="flex items-center gap-3">
             <span className="text-stone-300 text-sm font-medium">@{user?.username}</span>

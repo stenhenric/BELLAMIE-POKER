@@ -31,7 +31,7 @@ export default function Login() {
 
         <div className="mb-8">
           <h1 className="text-4xl font-heading font-bold mb-2 tracking-widest text-gold-gradient drop-shadow-lg">
-            FIDEL'S POKER
+            POKER WITH STEN
           </h1>
           <div className="h-px w-24 mx-auto bg-gradient-to-r from-transparent via-amber-500 to-transparent opacity-50 mb-3"></div>
           <p className="text-amber-100/70 uppercase tracking-widest text-xs font-semibold">Premium Card Lounge</p>
