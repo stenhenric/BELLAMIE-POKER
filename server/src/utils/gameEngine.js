@@ -317,8 +317,8 @@ function applyPlay(cards, state, playerId, options = {}) {
   const type = getCardType(firstCard);
 
   // Remove cards from player's hand
-  const cardIds = cards.map(c => c.id);
-  newState.hands[playerId] = newState.hands[playerId].filter(c => !cardIds.includes(c.id));
+  const cardIds = new Set(cards.map(c => c.id));
+  newState.hands[playerId] = newState.hands[playerId].filter(c => !cardIds.has(c.id));
 
   // Add to discard pile
   newState.discardPile.push(...cards);
