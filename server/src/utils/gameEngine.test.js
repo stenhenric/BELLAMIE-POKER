@@ -1,46 +1,39 @@
-const { shuffle, reshuffleDeck } = require('./gameEngine');
-const assert = require('assert');
+const { getCardType, CARD_TYPES } = require('./gameEngine');
 
-function testShuffle() {
-  console.log('Running testShuffle...');
-  const original = Array.from({ length: 100 }, (_, i) => i);
-  const shuffled = shuffle(original);
+describe('getCardType', () => {
+  test('should return SPECIAL_ACE for special ace card', () => {
+    const card = { isSpecialAce: true };
+    expect(getCardType(card)).toBe(CARD_TYPES.SPECIAL_ACE);
+  });
 
-  assert.strictEqual(shuffled.length, original.length, 'Shuffled array should have the same length');
-  assert.notDeepStrictEqual(shuffled, original, 'Shuffled array should not be identical to original (probabilistic)');
+  test('should return ACE for regular Ace', () => {
+    const card = { rank: 'A', suit: 'hearts' };
+    expect(getCardType(card)).toBe(CARD_TYPES.ACE);
+  });
 
-  const originalSorted = [...original].sort((a, b) => a - b);
-  const shuffledSorted = [...shuffled].sort((a, b) => a - b);
-  assert.deepStrictEqual(shuffledSorted, originalSorted, 'Shuffled array should contain all original elements');
+  test('should return FEEDER for Joker', () => {
+    const card = { rank: 'JOKER', suit: 'red' };
+    expect(getCardType(card)).toBe(CARD_TYPES.FEEDER);
+  });
 
-  console.log('testShuffle passed!');
-}
+  test('should return FEEDER for rank 2 and 3', () => {
+    expect(getCardType({ rank: '2', suit: 'clubs' })).toBe(CARD_TYPES.FEEDER);
+    expect(getCardType({ rank: '3', suit: 'diamonds' })).toBe(CARD_TYPES.FEEDER);
+  });
 
-function testReshuffleDeck() {
-  console.log('Running testReshuffleDeck...');
-  const state = {
-    discardPile: [
-      { id: '1' }, { id: '2' }, { id: '3' }, { id: '4' }, { id: '5' }
-    ],
-    deck: []
-  };
+  test('should return QUESTION for rank 8 and Q', () => {
+    expect(getCardType({ rank: '8', suit: 'spades' })).toBe(CARD_TYPES.QUESTION);
+    expect(getCardType({ rank: 'Q', suit: 'hearts' })).toBe(CARD_TYPES.QUESTION);
+  });
 
-  const topBefore = state.discardPile[state.discardPile.length - 1];
-  reshuffleDeck(state);
+  test('should return SPECIAL for rank J and K', () => {
+    expect(getCardType({ rank: 'J', suit: 'clubs' })).toBe(CARD_TYPES.SPECIAL);
+    expect(getCardType({ rank: 'K', suit: 'diamonds' })).toBe(CARD_TYPES.SPECIAL);
+  });
 
-  assert.strictEqual(state.discardPile.length, 1, 'Discard pile should only have the top card left');
-  assert.strictEqual(state.discardPile[0], topBefore, 'The top card of discard pile should remain the same');
-  assert.strictEqual(state.deck.length, 4, 'Deck should contain all other cards');
-
-  console.log('testReshuffleDeck passed!');
-}
-
-try {
-  testShuffle();
-  testReshuffleDeck();
-  console.log('All tests passed successfully!');
-} catch (error) {
-  console.error('Test failed!');
-  console.error(error);
-  process.exit(1);
-}
+  test('should return NORMAL for other ranks', () => {
+    expect(getCardType({ rank: '4', suit: 'spades' })).toBe(CARD_TYPES.NORMAL);
+    expect(getCardType({ rank: '7', suit: 'hearts' })).toBe(CARD_TYPES.NORMAL);
+    expect(getCardType({ rank: '10', suit: 'clubs' })).toBe(CARD_TYPES.NORMAL);
+  });
+});

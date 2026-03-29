@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 
@@ -64,6 +64,7 @@ function CardDisplay({ card, selected, onClick }) {
 
 export default function Game() {
   const { roomId } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const socket = useSocket();
   const [gameState, setGameState] = useState(null);
@@ -86,6 +87,10 @@ export default function Game() {
   }, []);
 
   useEffect(() => {
+    localStorage.setItem('activeGameRoomId', roomId);
+  }, [roomId]);
+
+  useEffect(() => {
     if (!socket) return;
 
     // Sync state on mount (page reload) and on every reconnect
@@ -96,14 +101,34 @@ export default function Game() {
       setShowSuitPicker(false);
       setShowCallPicker(false);
     };
-    const handleAppError = ({ message: errorMessage }) => flashMessage(errorMessage);
-    const handleGameOver = ({ username }) => setGameOver(username);
+    const handleAppError = ({ message: errorMessage }) => {
+      if (
+        errorMessage === 'No active game' ||
+        errorMessage === 'You are not in this game' ||
+        errorMessage === 'You are out of this game' ||
+        errorMessage === 'Room not found'
+      ) {
+        localStorage.removeItem('activeGameRoomId');
+        navigate('/lobby', { replace: true });
+        return;
+      }
+      flashMessage(errorMessage);
+    };
+    const handleGameOver = ({ username }) => {
+      localStorage.removeItem('activeGameRoomId');
+      setGameOver(username);
+    };
     const handleNikoKadiDeclared = ({ username }) => flashMessage(`🔔 ${username} says NIKO KADI!`, 4000);
     const handleNikoKadiMissed = ({ username }) => flashMessage(`⚠ ${username} forgot NIKO KADI - fined 1 card!`, 4000);
     const handleFined = ({ message: fineMessage }) => flashMessage(`❌ ${fineMessage}`);
     const handlePlayerEliminated = ({ username }) => flashMessage(`💀 ${username} eliminated (15 cards)!`);
     const handlePlayerDisconnected = ({ username }) => flashMessage(`⚠ ${username} disconnected - waiting for them to reconnect...`, 5000);
     const handlePlayerReconnected = ({ username }) => flashMessage(`✓ ${username} reconnected`);
+    const handlePlayerSurrendered = ({ username }) => flashMessage(`🏳 ${username} surrendered`, 4000);
+    const handleSurrenderSuccess = () => {
+      localStorage.removeItem('activeGameRoomId');
+      navigate('/lobby', { replace: true });
+    };
 
     socket.emit('rejoin_game', { roomId });
     socket.on('connect', handleConnect);
@@ -116,6 +141,8 @@ export default function Game() {
     socket.on('player_eliminated', handlePlayerEliminated);
     socket.on('player_disconnected', handlePlayerDisconnected);
     socket.on('player_reconnected', handlePlayerReconnected);
+    socket.on('player_surrendered', handlePlayerSurrendered);
+    socket.on('surrender_success', handleSurrenderSuccess);
 
     return () => {
       socket.off('connect', handleConnect);
@@ -128,8 +155,10 @@ export default function Game() {
       socket.off('player_eliminated', handlePlayerEliminated);
       socket.off('player_disconnected', handlePlayerDisconnected);
       socket.off('player_reconnected', handlePlayerReconnected);
+      socket.off('player_surrendered', handlePlayerSurrendered);
+      socket.off('surrender_success', handleSurrenderSuccess);
     };
-  }, [socket, roomId]);
+  }, [socket, roomId, navigate]);
 
   const isMyTurn = gameState?.currentPlayerId === user?.id;
   const hasSpecialAceSelected = selected.length === 1 && selected[0]?.isSpecialAce;
@@ -163,6 +192,13 @@ export default function Game() {
     socket.emit('niko_kadi');
   };
 
+  const surrenderGame = () => {
+    if (!socket) return;
+    const confirmed = window.confirm('Surrender and exit this game?');
+    if (!confirmed) return;
+    socket.emit('surrender_game', { roomId });
+  };
+
   const confirmSuit = (suit) => {
     socket.emit('play_cards', { cards: selected, chosenSuit: suit });
     setShowSuitPicker(false);
@@ -187,7 +223,13 @@ export default function Game() {
             <p className="text-amber-500 uppercase tracking-widest text-xs font-bold mt-2">Takes the pot</p>
           </div>
 
-          <button onClick={() => window.location.href = '/lobby'} className="btn-gold w-full px-6 py-4 rounded-xl font-bold tracking-widest uppercase text-sm">
+          <button
+            onClick={() => {
+              localStorage.removeItem('activeGameRoomId');
+              navigate('/lobby', { replace: true });
+            }}
+            className="btn-gold w-full px-6 py-4 rounded-xl font-bold tracking-widest uppercase text-sm"
+          >
             Return to Lounge
           </button>
         </div>
@@ -363,6 +405,15 @@ export default function Game() {
         }`}>
           {isMyTurn ? 'YOUR TURN TO ACT' : `Waiting for ${gameState.players.find(p => p.id === gameState.currentPlayerId)?.username}`}
         </p>
+      </div>
+
+      <div className="relative z-10 flex justify-center mb-2">
+        <button
+          onClick={surrenderGame}
+          className="bg-red-900/80 hover:bg-red-800 text-red-100 border border-red-500/50 px-6 py-2 rounded-lg font-bold uppercase tracking-widest text-xs shadow-lg transition-all transform hover:-translate-y-1"
+        >
+          Surrender / Exit
+        </button>
       </div>
 
       {/* My hand & Controls */}
