@@ -196,6 +196,10 @@ export default function Game() {
     socket.emit('niko_kadi');
   };
 
+  const alertNikoKadi = () => {
+    socket.emit('alert_niko_kadi');
+  };
+
   const surrenderGame = () => {
     if (!socket) return;
     const confirmed = window.confirm('Surrender and exit this game?');
@@ -461,6 +465,16 @@ export default function Game() {
                     NIKO KADI!
                   </button>
                 )}
+              </>
+            )}
+            {gameState.nikoKadiWindow && gameState.nikoKadiWindow !== user?.id && !gameState.nikokadi[gameState.nikoKadiWindow] && (
+              <>
+                <button
+                  onClick={alertNikoKadi}
+                  className="bg-red-600 hover:bg-red-500 text-white px-6 py-2 rounded-xl font-bold uppercase tracking-widest text-sm shadow-[0_4px_20px_rgba(220,38,38,0.6)] border border-red-400 animate-bounce"
+                >
+                  Alert NIKO KADI!
+                </button>
               </>
             )}
           </div>
