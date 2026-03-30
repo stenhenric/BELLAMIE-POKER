@@ -7,18 +7,16 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth');
 const gameSocket = require('./socket/gameSocket');
 const connectDB = require('./config/db');
+const corsOptions = require('./config/cors');
 
 const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
-    methods: ['GET', 'POST'],
-  },
+  cors: corsOptions,
 });
 
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }));
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Routes
