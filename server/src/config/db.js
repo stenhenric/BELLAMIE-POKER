@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
+const logger = require('../utils/logger');
 
-let hasErrorListener = false;
+let hasListeners = false;
 
 async function connectDB() {
   const mongoUri = process.env.MONGO_URI;
@@ -8,11 +9,15 @@ async function connectDB() {
     throw new Error('MONGO_URI is not set');
   }
 
-  if (!hasErrorListener) {
+  if (!hasListeners) {
     mongoose.connection.on('error', (err) => {
-      console.error('MongoDB connection error:', err.message);
+      logger.error('MongoDB connection error', { error: err.message });
     });
-    hasErrorListener = true;
+
+    mongoose.connection.on('connected', () => {
+      logger.info('Connected to MongoDB');
+    });
+    hasListeners = true;
   }
 
   if (mongoose.connection.readyState === 1) {
@@ -20,7 +25,6 @@ async function connectDB() {
   }
 
   await mongoose.connect(mongoUri);
-  console.log('Connected to MongoDB');
   return mongoose.connection;
 }
 
