@@ -1,4 +1,4 @@
-const { buildDeck } = require("./gameEngine");
+const { buildDeck, checkWin } = require("./gameEngine");
 const { getCardType, CARD_TYPES } = require('./gameEngine');
 
 describe('getCardType', () => {
@@ -92,5 +92,49 @@ describe("buildDeck", () => {
     // We check if at least one card is in a different position
     const isDifferentOrder = deck1.some((card, index) => card.id !== deck2[index].id);
     expect(isDifferentOrder).toBe(true);
+  });
+});
+
+describe('checkWin', () => {
+  test('should return false if player still has cards in hand', () => {
+    const state = {
+      hands: {
+        player1: [{ rank: 'A', suit: 'hearts' }],
+        player2: []
+      },
+      nikokadi: {
+        player1: true,
+        player2: false
+      }
+    };
+    expect(checkWin(state, 'player1')).toBe(false);
+  });
+
+  test('should return false if player has no cards but has not declared niko kadi', () => {
+    const state = {
+      hands: {
+        player1: [],
+        player2: []
+      },
+      nikokadi: {
+        player1: false,
+        player2: false
+      }
+    };
+    expect(checkWin(state, 'player1')).toBe(false);
+  });
+
+  test('should return true if player has no cards and has declared niko kadi', () => {
+    const state = {
+      hands: {
+        player1: [],
+        player2: []
+      },
+      nikokadi: {
+        player1: true,
+        player2: false
+      }
+    };
+    expect(checkWin(state, 'player1')).toBe(true);
   });
 });
