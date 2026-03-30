@@ -2,8 +2,41 @@
 const { randomInt } = require('crypto');
 
 const SUITS = ['hearts', 'diamonds', 'clubs', 'spades'];
-const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+
 const COLOURS = { hearts: 'red', diamonds: 'red', clubs: 'black', spades: 'black' };
+
+const CARD_RANKS = {
+  TWO: '2',
+  THREE: '3',
+  FOUR: '4',
+  FIVE: '5',
+  SIX: '6',
+  SEVEN: '7',
+  EIGHT: '8',
+  NINE: '9',
+  TEN: '10',
+  JACK: 'J',
+  QUEEN: 'Q',
+  KING: 'K',
+  ACE: 'A',
+  JOKER: 'JOKER'
+};
+
+const RANKS = [
+  CARD_RANKS.TWO,
+  CARD_RANKS.THREE,
+  CARD_RANKS.FOUR,
+  CARD_RANKS.FIVE,
+  CARD_RANKS.SIX,
+  CARD_RANKS.SEVEN,
+  CARD_RANKS.EIGHT,
+  CARD_RANKS.NINE,
+  CARD_RANKS.TEN,
+  CARD_RANKS.JACK,
+  CARD_RANKS.QUEEN,
+  CARD_RANKS.KING,
+  CARD_RANKS.ACE
+];
 
 const CARD_TYPES = {
   NORMAL: 'normal',
@@ -35,11 +68,11 @@ function buildDeck() {
   }
 
   // 2 Jokers
-  deck.push({ rank: 'JOKER', suit: 'red', colour: 'red', id: 'JOKER_red' });
-  deck.push({ rank: 'JOKER', suit: 'black', colour: 'black', id: 'JOKER_black' });
+  deck.push({ rank: CARD_RANKS.JOKER, suit: 'red', colour: 'red', id: 'JOKER_red' });
+  deck.push({ rank: CARD_RANKS.JOKER, suit: 'black', colour: 'black', id: 'JOKER_black' });
 
   // Special Ace
-  deck.push({ rank: 'A', suit: 'special', colour: 'black', id: 'A_special', isSpecialAce: true });
+  deck.push({ rank: CARD_RANKS.ACE, suit: 'special', colour: 'black', id: 'A_special', isSpecialAce: true });
 
   return shuffle(deck);
 }
@@ -56,18 +89,18 @@ function shuffle(deck) {
 // ─── Card classification ──────────────────────────────────────────────────────
 function getCardType(card) {
   if (card.isSpecialAce) return CARD_TYPES.SPECIAL_ACE;
-  if (card.rank === 'A') return CARD_TYPES.ACE;
-  if (card.rank === 'JOKER') return CARD_TYPES.FEEDER;
-  if (card.rank === '2' || card.rank === '3') return CARD_TYPES.FEEDER;
-  if (card.rank === '8' || card.rank === 'Q') return CARD_TYPES.QUESTION;
-  if (card.rank === 'J' || card.rank === 'K') return CARD_TYPES.SPECIAL;
+  if (card.rank === CARD_RANKS.ACE) return CARD_TYPES.ACE;
+  if (card.rank === CARD_RANKS.JOKER) return CARD_TYPES.FEEDER;
+  if (card.rank === CARD_RANKS.TWO || card.rank === CARD_RANKS.THREE) return CARD_TYPES.FEEDER;
+  if (card.rank === CARD_RANKS.EIGHT || card.rank === CARD_RANKS.QUEEN) return CARD_TYPES.QUESTION;
+  if (card.rank === CARD_RANKS.JACK || card.rank === CARD_RANKS.KING) return CARD_TYPES.SPECIAL;
   return CARD_TYPES.NORMAL;
 }
 
 function isFeeder(card) { return getCardType(card) === CARD_TYPES.FEEDER; }
 function isAce(card) { return getCardType(card) === CARD_TYPES.ACE || getCardType(card) === CARD_TYPES.SPECIAL_ACE; }
 function isQuestion(card) { return getCardType(card) === CARD_TYPES.QUESTION; }
-function isJoker(card) { return card.rank === 'JOKER'; }
+function isJoker(card) { return card.rank === CARD_RANKS.JOKER; }
 
 function isValidCalledCard(card) {
   return Boolean(card && RANKS.includes(card.rank) && SUITS.includes(card.suit));
@@ -121,9 +154,9 @@ function syncNikoKadiStatus(state, playerId) {
 }
 
 function feederValue(card) {
-  if (card.rank === '2') return 2;
-  if (card.rank === '3') return 3;
-  if (card.rank === 'JOKER') return 5;
+  if (card.rank === CARD_RANKS.TWO) return 2;
+  if (card.rank === CARD_RANKS.THREE) return 3;
+  if (card.rank === CARD_RANKS.JOKER) return 5;
   return 0;
 }
 
@@ -144,7 +177,7 @@ function createGameState(players) {
   let remaining = deck.slice(deckIndex);
   for (let i = 0; i < remaining.length; i++) {
     const c = remaining[i];
-    if (!isFeeder(c) && !isAce(c) && !isQuestion(c) && c.rank !== 'J' && c.rank !== 'K') {
+    if (!isFeeder(c) && !isAce(c) && !isQuestion(c) && c.rank !== CARD_RANKS.JACK && c.rank !== CARD_RANKS.KING) {
       firstCard = c;
       remaining = [...remaining.slice(0, i), ...remaining.slice(i + 1)];
       break;
@@ -229,7 +262,7 @@ function validateQuestions(cards, state, topCard) {
   if (answerCards.length === 1) {
     const answer = answerCards[0];
     const lastQuestion = questionCards[questionCards.length - 1];
-    const invalid = isFeeder(answer) || isAce(answer) || answer.rank === 'J' || answer.rank === 'K' || answer.rank === 'Q';
+    const invalid = isFeeder(answer) || isAce(answer) || answer.rank === CARD_RANKS.JACK || answer.rank === CARD_RANKS.KING || answer.rank === CARD_RANKS.QUEEN;
     if (invalid) return returnInvalid('Invalid answer card');
     if (answer.suit !== lastQuestion.suit) {
       return returnInvalid(`Answer must match suit of last question: ${lastQuestion.suit}`);
@@ -370,11 +403,11 @@ function applyPlay(cards, state, playerId, options = {}) {
     return applyQuestionLogic(newState, cards);
   }
 
-  if (firstCard.rank === 'J') {
+  if (firstCard.rank === CARD_RANKS.JACK) {
     return applyJackLogic(newState, cards, lastCard);
   }
 
-  if (firstCard.rank === 'K') {
+  if (firstCard.rank === CARD_RANKS.KING) {
     return applyKingLogic(newState, cards, lastCard);
   }
 
@@ -413,7 +446,7 @@ function applyFeederLogic(newState, cards, lastCard, oldState) {
   for (const c of cards) {
     newState.feedStack += feederValue(c);
   }
-  newState.activeSuit = lastCard.rank === 'JOKER' ? oldState.activeSuit : lastCard.suit;
+  newState.activeSuit = lastCard.rank === CARD_RANKS.JOKER ? oldState.activeSuit : lastCard.suit;
   newState.activeColour = lastCard.colour;
   advanceTurn(newState);
   return newState;
@@ -565,6 +598,7 @@ module.exports = {
   isAce,
   isQuestion,
   CARD_TYPES,
+  CARD_RANKS,
   shuffle,
   reshuffleDeck,
 };
