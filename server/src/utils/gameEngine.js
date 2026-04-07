@@ -416,6 +416,13 @@ function applyPlay(cards, state, playerId, options = {}) {
 
 // ─── Card Logic Handlers ──────────────────────────────────────────────────────
 
+function applyStandardEffect(newState, lastCard, steps = 1) {
+  newState.activeSuit = lastCard.suit;
+  newState.activeColour = COLOURS[lastCard.suit];
+  advanceTurn(newState, steps);
+  return newState;
+}
+
 function applyAceLogic(newState, cards, playerId, options, type, oldState) {
   // Refuse feeders
   newState.activeFeed = false;
@@ -474,28 +481,19 @@ function applyQuestionLogic(newState, cards) {
 }
 
 function applyJackLogic(newState, cards, lastCard) {
-  newState.activeSuit = lastCard.suit;
-  newState.activeColour = COLOURS[lastCard.suit];
   const skipCount = cards.length;
-  advanceTurn(newState, skipCount + 1);
-  return newState;
+  return applyStandardEffect(newState, lastCard, skipCount + 1);
 }
 
 function applyKingLogic(newState, cards, lastCard) {
   for (let i = 0; i < cards.length; i++) {
     newState.direction *= -1;
   }
-  newState.activeSuit = lastCard.suit;
-  newState.activeColour = COLOURS[lastCard.suit];
-  advanceTurn(newState);
-  return newState;
+  return applyStandardEffect(newState, lastCard);
 }
 
 function applyNormalLogic(newState, lastCard) {
-  newState.activeSuit = lastCard.suit;
-  newState.activeColour = COLOURS[lastCard.suit];
-  advanceTurn(newState);
-  return newState;
+  return applyStandardEffect(newState, lastCard);
 }
 
 // ─── Advance turn ─────────────────────────────────────────────────────────────

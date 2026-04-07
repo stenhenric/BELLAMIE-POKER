@@ -1,5 +1,12 @@
-const { buildDeck, checkWin } = require("./gameEngine");
-const { getCardType, CARD_TYPES } = require('./gameEngine');
+const {
+  buildDeck,
+  checkWin,
+  applyPlay,
+  createGameState,
+  CARD_RANKS,
+  CARD_TYPES
+} = require("./gameEngine");
+const { getCardType } = require('./gameEngine');
 
 describe('getCardType', () => {
   test('should return SPECIAL_ACE for special ace card', () => {
@@ -136,5 +143,74 @@ describe('checkWin', () => {
       }
     };
     expect(checkWin(state, 'player1')).toBe(true);
+  });
+});
+
+describe('applyPlay', () => {
+  const players = [{ id: 'p1', name: 'Player 1' }, { id: 'p2', name: 'Player 2' }, { id: 'p3', name: 'Player 3' }];
+
+  test('should update state correctly for a Normal card', () => {
+    const state = createGameState(players);
+    const card = { rank: '4', suit: 'spades', id: '4_spades', colour: 'black' };
+    state.hands['p1'] = [card];
+    state.currentPlayerIndex = 0;
+    state.activeSuit = 'hearts';
+    state.activeColour = 'red';
+
+    const newState = applyPlay([card], state, 'p1');
+
+    expect(newState.activeSuit).toBe('spades');
+    expect(newState.activeColour).toBe('black');
+    expect(newState.currentPlayerIndex).toBe(1);
+    expect(newState.hands['p1']).toHaveLength(0);
+    expect(newState.discardPile[newState.discardPile.length - 1]).toEqual(card);
+  });
+
+  test('should toggle direction and update state for a King card', () => {
+    const state = createGameState(players);
+    const card = { rank: CARD_RANKS.KING, suit: 'diamonds', id: 'K_diamonds', colour: 'red' };
+    state.hands['p1'] = [card];
+    state.currentPlayerIndex = 0;
+    state.direction = 1;
+
+    const newState = applyPlay([card], state, 'p1');
+
+    expect(newState.direction).toBe(-1);
+    expect(newState.activeSuit).toBe('diamonds');
+    expect(newState.activeColour).toBe('red');
+    // From 0, with direction -1, next should be 2 (p3)
+    expect(newState.currentPlayerIndex).toBe(2);
+  });
+
+  test('should skip players correctly for a Jack card', () => {
+    const state = createGameState(players);
+    const card = { rank: CARD_RANKS.JACK, suit: 'clubs', id: 'J_clubs', colour: 'black' };
+    state.hands['p1'] = [card];
+    state.currentPlayerIndex = 0;
+    state.direction = 1;
+
+    const newState = applyPlay([card], state, 'p1');
+
+    expect(newState.activeSuit).toBe('clubs');
+    expect(newState.activeColour).toBe('black');
+    // Skip 1 player (p2), so next is p3 (index 2)
+    expect(newState.currentPlayerIndex).toBe(2);
+  });
+
+  test('should skip multiple players if multiple Jacks are played', () => {
+    const players4 = [...players, { id: 'p4', name: 'Player 4' }];
+    const state = createGameState(players4);
+    const jack1 = { rank: CARD_RANKS.JACK, suit: 'clubs', id: 'J_clubs', colour: 'black' };
+    const jack2 = { rank: CARD_RANKS.JACK, suit: 'spades', id: 'J_spades', colour: 'black' };
+    state.hands['p1'] = [jack1, jack2];
+    state.currentPlayerIndex = 0;
+    state.direction = 1;
+
+    // In a real game, they must have same rank to be played together, which they do.
+    const newState = applyPlay([jack1, jack2], state, 'p1');
+
+    expect(newState.activeSuit).toBe('spades');
+    // Skip 2 players (p2, p3), so next is p4 (index 3)
+    expect(newState.currentPlayerIndex).toBe(3);
   });
 });
